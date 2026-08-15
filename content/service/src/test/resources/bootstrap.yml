@@ -1,0 +1,15 @@
+spring:
+  application:
+    name: content-mapper
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://172.24.77.139:3306/sunflower_class?serverTimezone=Asia/Shanghai&useUnicode=true&useSSL=false&characterEncoding=utf8&allowPublicKeyRetrieval=true
+    username: root
+    password: Cjlei520..
+
+mybatis-plus:
+  mapper-locations: classpath:mapper/*.xml
+
+# 日志文件配置路径
+logging:
+  config: classpath:logback.xml

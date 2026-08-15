@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.sunflower_class.service.content.mapper.CourseCategoryMapper">
+
+    <!-- 通用查询映射结果 -->
+    <resultMap id="BaseResultMap" type="com.sunflower_class.model.po.CourseCategory">
+        <id column="id" property="id" />
+        <result column="name" property="name" />
+        <result column="label" property="label" />
+        <result column="parentid" property="parentid" />
+        <result column="is_show" property="isShow" />
+        <result column="orderby" property="orderby" />
+        <result column="is_leaf" property="isLeaf" />
+    </resultMap>
+
+    <!-- 通用查询结果列 -->
+    <sql id="Base_Column_List">
+        id, name, label, parentid, is_show, orderby, is_leaf
+    </sql>
+
+    <select id="queryTreeNodes" parameterType="java.lang.String" resultType="com.sunflower_class.model.dto.CourseCategoryTreeDto">
+    WITH RECURSIVE cc AS (
+            SELECT 
+                p.id, p.name, p.label, p.parentid, 
+                p.is_show, p.orderby, p.is_leaf 
+            FROM course_category p 
+            WHERE p.id = #{id}
+            
+            UNION ALL
+            
+            SELECT 
+                c1.id, c1.name, c1.label, c1.parentid, 
+                c1.is_show, c1.orderby, c1.is_leaf 
+            FROM course_category c1 
+            INNER JOIN cc ON c1.parentid = cc.id
+        )
+        SELECT 
+            cc.id, cc.name, cc.label, cc.parentid, 
+            cc.is_show, cc.orderby, cc.is_leaf 
+        FROM cc 
+        ORDER BY cc.id
+    </select>
+
+</mapper>

@@ -1,0 +1,23 @@
+spring:
+  application:
+    name: media-service
+  profiles:
+    active: dev
+  cloud:
+    nacos:
+      config:
+        enabled: true
+        server-addr: 172.24.77.139:8848
+        namespace: dev
+        group: sunflower_class
+        file-extension: yaml
+        refresh-enabled: true
+        shared-configs:
+          - data-id: logging-${spring.profiles.active}.yaml
+            group: common
+            refresh: true
+      discovery:
+        enabled: true
+        server-addr: 172.24.77.139:8848
+        namespace: dev
+        group: sunflower_class
