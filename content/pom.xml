@@ -13,8 +13,8 @@
 	<packaging>pom</packaging>
 
 	<modules>
-		<module>api</module>
-		<module>service</module>
 		<module>model</module>
+		<module>service</module>
+		<module>api</module>  
 	</modules>
 </project>

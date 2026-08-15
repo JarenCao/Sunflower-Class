@@ -11,6 +11,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
+@Data
 @TableName("media_files")
 @Schema(description = "媒资文件信息")
 public class MediaFiles implements Serializable {
