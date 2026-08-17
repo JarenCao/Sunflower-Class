@@ -32,7 +32,7 @@ public class CourseBaseInfoController {
     @Operation(summary = "查询课程列表", description = "根据条件分页查询课程信息")
     @PostMapping("/course/list")
     public PageResult<CourseBase> list(
-            @RequestParam PageParams pageParams,
+            PageParams pageParams,
             @RequestBody QueryCourseParamsDto queryCourseParamsDto) {
 
         return courseBaseInfoService.queryCourseBasePage(pageParams, queryCourseParamsDto);

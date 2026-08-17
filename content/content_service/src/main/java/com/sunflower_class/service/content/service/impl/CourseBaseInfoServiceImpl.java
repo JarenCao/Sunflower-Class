@@ -199,8 +199,10 @@ public class CourseBaseInfoServiceImpl implements CourseBaseInfoService {
         LambdaQueryWrapper<CourseBase> lambdaQueryWrapper = new LambdaQueryWrapper<>();
         lambdaQueryWrapper.like(StringUtils.isNotBlank(courseParamsDto.getCourseName()),
                 CourseBase::getName, courseParamsDto.getCourseName());
+
         lambdaQueryWrapper.eq(StringUtils.isNotBlank(courseParamsDto.getAuditStatus()),
                 CourseBase::getAuditStatus, courseParamsDto.getAuditStatus());
+                
         lambdaQueryWrapper.eq(StringUtils.isNotBlank(courseParamsDto.getPublishStatus()),
                 CourseBase::getStatus, courseParamsDto.getPublishStatus());
 

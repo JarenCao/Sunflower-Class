@@ -30,8 +30,8 @@ public class MediaFiles implements Serializable {
     @Schema(description = "文件名称", example = "课程介绍视频.mp4")
     private String filename;
 
-    @Schema(description = "文件类型（001001=图片，001002=视频，001003=其它）", example = "001002", allowableValues = { "001001",
-            "001002", "001003" })
+    @Schema(description = "文件类型（20101=图片，20102=视频，20103=其它）", example = "20101", allowableValues = { "20101",
+            "20102", "20103" })
     private String fileType;
 
     @Schema(description = "文件标签", example = "Java,Spring,教程")
@@ -66,8 +66,8 @@ public class MediaFiles implements Serializable {
     @Schema(description = "备注", example = "已转码完成")
     private String remark;
 
-    @Schema(description = "审核状态（002001=审核未通过，002002=未审核，002003=审核通过）", example = "002003", allowableValues = { "002001",
-            "002002", "002003" })
+    @Schema(description = "审核状态（20201=审核未通过，20202=未审核，20203=审核通过）", example = "20201", allowableValues = { "20201",
+            "20202", "20203" })
     private String auditStatus;
 
     @Schema(description = "审核意见", example = "内容合规，审核通过")
