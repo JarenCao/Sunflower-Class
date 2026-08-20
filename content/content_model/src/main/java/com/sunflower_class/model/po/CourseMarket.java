@@ -1,22 +1,18 @@
 package com.sunflower_class.model.po;
 
+import java.io.Serializable;
+import java.math.BigDecimal;
+
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.io.Serializable;
-import java.math.BigDecimal;
-
 /**
- * <p>
  * 课程营销信息
- * </p>
- *
- * @author jarencao
- * @since 2026-08-07
  */
 @Getter
 @Setter

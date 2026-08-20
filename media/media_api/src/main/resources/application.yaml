@@ -1,8 +1,15 @@
 spring:
   application:
-    name: content-service
+    name: media-api
   profiles:
     active: dev
+  config:
+    import:
+      - "nacos:media-service-dev.yaml?group=sunflower_class"
+      - "nacos:media-api-dev.yaml?group=sunflower_class"
+      - "nacos:logging-dev.yaml?group=common"
+      - "nacos:swagger-dev.yaml?group=common"
+      - "nacos:rabbitmq-dev.yaml?group=common"
   cloud:
     nacos:
       config:
@@ -12,10 +19,6 @@ spring:
         group: sunflower_class
         file-extension: yaml
         refresh-enabled: true
-        shared-configs:
-          - data-id: logging-${spring.profiles.active}.yaml
-            group: common
-            refresh: true
       discovery:
         enabled: true
         server-addr: 172.24.77.139:8848

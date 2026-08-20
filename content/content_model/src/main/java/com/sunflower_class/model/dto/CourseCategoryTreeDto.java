@@ -10,9 +10,6 @@ import lombok.Data;
 
 /**
  * 课程分类树形结构 DTO
- *
- * @author jarencao
- * @since 2026-08-07
  */
 @Data
 @Schema(description = "课程分类树形结构")

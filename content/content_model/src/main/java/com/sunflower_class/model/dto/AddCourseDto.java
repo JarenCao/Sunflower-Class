@@ -1,11 +1,6 @@
 package com.sunflower_class.model.dto;
 
 import java.math.BigDecimal;
-import java.sql.Date;
-import java.time.LocalDateTime;
-
-import com.baomidou.mybatisplus.annotation.FieldFill;
-import com.baomidou.mybatisplus.annotation.TableField;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;

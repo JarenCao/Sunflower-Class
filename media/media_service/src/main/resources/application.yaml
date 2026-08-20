@@ -1,0 +1,24 @@
+spring:
+  application:
+    name: media-service
+  profiles:
+    active: dev
+  config:
+    import:
+      - "nacos:media-service-dev.yaml?group=sunflower_class"
+      - "nacos:logging-dev.yaml?group=common"
+      - "nacos:rabbitmq-dev.yaml?group=common"
+  cloud:
+    nacos:
+      config:
+        enabled: true
+        server-addr: 172.24.77.139:8848
+        namespace: dev
+        group: sunflower_class
+        file-extension: yaml
+        refresh-enabled: true
+      discovery:
+        enabled: true
+        server-addr: 172.24.77.139:8848
+        namespace: dev
+        group: sunflower_class

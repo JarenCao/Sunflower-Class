@@ -9,6 +9,12 @@ spring:
     name: content-api
   profiles:
     active: dev
+  config:
+    import:
+      - "nacos:content-service-dev.yaml?group=sunflower_class"
+      - "nacos:content-api-dev.yaml?group=sunflower_class"
+      - "nacos:logging-dev.yaml?group=common"
+      - "nacos:swagger-dev.yaml?group=common"
   cloud:
     nacos:
       config:
@@ -18,17 +24,6 @@ spring:
         group: sunflower_class
         file-extension: yaml
         refresh-enabled: true
-        extension-configs:
-          - data-id: content-service-${spring.profiles.active}.yaml
-            group: sunflower_class
-            refresh: true
-        shared-configs:
-          - data-id: swagger-${spring.profiles.active}.yaml
-            group: common
-            refresh: true
-          - data-id: logging-${spring.profiles.active}.yaml
-            group: common
-            refresh: true
       discovery:
         enabled: true
         server-addr: 172.24.77.139:8848
@@ -43,13 +38,11 @@ spring:
 # # Swagger 配置
 # springdoc:
 #   api-docs:
-#     enabled: ${SWAGGER_ENABLED:true}
 #     path: /v3/api-docs
 #   swagger-ui:
-#     enabled: ${SWAGGER_ENABLED:true}
 #     path: /swagger-ui.html
-#     operations-sorter: method
-#     doc-expansion: none
+#     tags-sorter: alpha
+#     operations-sorter: alpha
 #   packages-to-scan: com.sunflower_class.api
 
 # # Knife4j 配置
@@ -58,6 +51,9 @@ spring:
 #   setting:
 #     language: zh-CN
 
-# # 日志文件配置路径
-# logging:
-#   config: classpath:logback.xml
+# 日志文件配置路径
+logging:
+  level:
+    com.alibaba.cloud.nacos: DEBUG
+    com.alibaba.nacos: DEBUG
+  config: classpath:logback.xml
