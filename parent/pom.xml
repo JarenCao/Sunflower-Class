@@ -5,7 +5,7 @@
 	<parent>
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>3.2.4</version>
+		<version>4.1.0</version>
 		<relativePath/>
 	</parent>
 	<groupId>com.sunflower_class</groupId>
@@ -17,16 +17,18 @@
 
 	<properties>
 		<java.version>21</java.version>
-		<spring-boot.version>3.2.4</spring-boot.version>
+		<spring-boot.version>4.1.0</spring-boot.version>
 		<lombok.version>1.18.36</lombok.version>
-		<spring-cloud.version>2023.0.1</spring-cloud.version>
-		<spring-cloud-alibaba.version>2023.0.1.0</spring-cloud-alibaba.version>
-		<mybatis-plus.version>3.5.5</mybatis-plus.version>
+		<spring-cloud.version>2025.1.2</spring-cloud.version>
+		<spring-cloud-alibaba.version>2025.1.0.0</spring-cloud-alibaba.version>
+		<mybatis-plus.version>3.5.17</mybatis-plus.version>
 		<mysql.version>8.0.33</mysql.version>
 		<druid.version>1.2.25</druid.version>
 		<springdoc.version>2.6.0</springdoc.version>
 		<knife4j.version>4.3.0</knife4j.version>
 		<minio.version>8.5.12</minio.version>
+		<jsqlparser.version>4.9</jsqlparser.version>
+		<fastjson.version>2.0.43</fastjson.version>
 	</properties>
 
 	<dependencyManagement>
@@ -49,28 +51,78 @@
 				<scope>import</scope>
 			</dependency>
 
-			<!-- MyBatis-Plus -->
+			<!-- OpenFeign -->
+			<dependency>
+				<groupId>org.springframework.cloud</groupId>
+				<artifactId>spring-cloud-starter-openfeign</artifactId>
+			</dependency>
+
+			<!-- LoadBalancer -->
+			<dependency>
+				<groupId>org.springframework.cloud</groupId>
+				<artifactId>spring-cloud-starter-loadbalancer</artifactId>
+			</dependency>
+
+			<!-- RabbitMQ -->
+			<dependency>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-starter-amqp</artifactId>
+				<version>${spring-boot.version}</version>
+			</dependency>
+
+			<!-- ===== 数据库相关（按需引入） ===== -->
+
+			<!-- MyBatis-Plus for Spring Boot 4 -->
 			<dependency>
 				<groupId>com.baomidou</groupId>
-				<artifactId>mybatis-plus-boot-starter</artifactId>
+				<artifactId>mybatis-plus-spring-boot4-starter</artifactId>
 				<version>${mybatis-plus.version}</version>
 			</dependency>
+
+            <!-- MyBatis-Plus Extension -->
+            <dependency>
+                <groupId>com.baomidou</groupId>
+                <artifactId>mybatis-plus-extension</artifactId>
+                <version>${mybatis-plus.version}</version>
+            </dependency>
+
 			<dependency>
 				<groupId>com.baomidou</groupId>
 				<artifactId>mybatis-plus-annotation</artifactId>
 				<version>${mybatis-plus.version}</version>
 			</dependency>
+
 			<dependency>
 				<groupId>com.baomidou</groupId>
 				<artifactId>mybatis-plus-core</artifactId>
 				<version>${mybatis-plus.version}</version>
 			</dependency>
 
+            <dependency>
+                <groupId>com.baomidou</groupId>
+                <artifactId>mybatis-plus-jsqlparser</artifactId>
+                <version>${mybatis-plus.version}</version>
+            </dependency>
+
 			<!-- Druid 连接池 -->
 			<dependency>
 				<groupId>com.alibaba</groupId>
 				<artifactId>druid-spring-boot-3-starter</artifactId>
 				<version>${druid.version}</version>
+			</dependency>
+
+			<!-- jsqlparser - 分页插件依赖 -->
+			<dependency>
+				<groupId>com.github.jsqlparser</groupId>
+				<artifactId>jsqlparser</artifactId>
+				<version>${jsqlparser.version}</version>
+			</dependency>
+
+			<!-- Fastjson -->
+			<dependency>
+				<groupId>com.alibaba</groupId>
+				<artifactId>fastjson</artifactId>
+				<version>${fastjson.version}</version>
 			</dependency>
 
 			<!-- MySQL -->
@@ -100,46 +152,32 @@
 				<artifactId>minio</artifactId>
 				<version>${minio.version}</version>
 			</dependency>
-
-			<!-- Force MyBatis Spring 3.x (Spring 6 / Boot 3 compatibility) -->
-			<dependency>
-				<groupId>org.mybatis</groupId>
-				<artifactId>mybatis-spring</artifactId>
-				<version>3.0.4</version>
-			</dependency>
 		</dependencies>
 	</dependencyManagement>
 
+	<!-- 全局依赖：所有子模块都自动继承 -->
 	<dependencies>
+		<!-- Nacos 服务发现 -->
 		<dependency>
 			<groupId>com.alibaba.cloud</groupId>
 			<artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
 		</dependency>
 
+		<!-- Nacos 配置中心 -->
 		<dependency>
 			<groupId>com.alibaba.cloud</groupId>
 			<artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
 		</dependency>
 
+		<!-- DevTools -->
 		<dependency>
-			<groupId>org.springframework.cloud</groupId>
-			<artifactId>spring-cloud-starter-openfeign</artifactId>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-devtools</artifactId>
+			<scope>runtime</scope>
+			<optional>true</optional>
 		</dependency>
 
-		<dependency>
-			<groupId>org.springframework.cloud</groupId>
-			<artifactId>spring-cloud-starter-loadbalancer</artifactId>
-		</dependency>
 
-		<dependency>
-			<groupId>com.alibaba</groupId>
-			<artifactId>druid-spring-boot-3-starter</artifactId>
-		</dependency>
-
-		<dependency>
-			<groupId>com.baomidou</groupId>
-			<artifactId>mybatis-plus-boot-starter</artifactId>
-		</dependency>
 
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -162,9 +200,10 @@
 
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-test</artifactId>
+			<artifactId>spring-boot-starter-amqp-test</artifactId>
 			<scope>test</scope>
 		</dependency>
+
 	</dependencies>
 
 	<build>

@@ -15,8 +15,6 @@ import java.time.format.DateTimeFormatter;
 /**
  * Jackson 配置类
  * 统一处理日期时间格式
- *
- * @author jarencao
  */
 @Configuration
 public class JacksonConfig {
