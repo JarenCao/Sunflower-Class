@@ -51,13 +51,13 @@ import lombok.extern.slf4j.Slf4j;
 public class MediaFileServiceImpl implements MediaFileService {
 
     @Autowired
-    private MediaFilesMapper mediaFilesMapper;
-
-    @Autowired
     private MinioClient minioClient;
 
     @Autowired
     private MinioConfig minioConfig;
+
+    @Autowired
+    private MediaFilesMapper mediaFilesMapper;
 
     @Autowired
     private AddMediaFilesService addMediaFilesService;
@@ -128,8 +128,10 @@ public class MediaFileServiceImpl implements MediaFileService {
         String fileMd5;
 
         try (InputStream inputStream = file.getInputStream()) {
+
             fileMd5 = DigestUtils.md5Hex(inputStream);
             log.info("文件MD5计算完成: fileName={}, md5={}", fileName, fileMd5);
+
         } catch (Exception e) {
             log.error("计算MD5失败: fileName={}", fileName, e);
             throw new RuntimeException("计算MD5失败: " + e.getMessage(), e);
@@ -137,6 +139,7 @@ public class MediaFileServiceImpl implements MediaFileService {
 
         MediaFiles existingMediaFiles = mediaFilesMapper.selectById(fileMd5);
         if (existingMediaFiles != null) {
+
             String bucket = existingMediaFiles.getBucket();
             String filePath = existingMediaFiles.getFilePath();
 
@@ -172,12 +175,14 @@ public class MediaFileServiceImpl implements MediaFileService {
 
         try {
             try (InputStream inputStream = file.getInputStream()) {
+
                 uploadFileToMinio(inputStream, bucketName, objectName, mimeType, file.getSize());
                 log.info("文件上传到MinIO完成: fileName={}, bucketName={}, objectName={}",
                         fileName, bucketName, objectName);
             }
 
             if (!verifyFileIntegrityByStat(bucketName, objectName, fileMd5)) {
+
                 log.error("文件完整性校验失败: fileName={}, expectedMd5={}", fileName, fileMd5);
                 throw new RuntimeException("文件完整性校验失败");
             }
@@ -208,27 +213,33 @@ public class MediaFileServiceImpl implements MediaFileService {
 
     @Override
     public RestResponse<Boolean> checkFile(String fileMd5) {
+        
         MediaFiles mediaFiles = mediaFilesMapper.selectById(fileMd5);
         if (mediaFiles == null) {
-            log.info("文件记录不存在: fileMd5={}", fileMd5);
             return RestResponse.success(false);
         }
 
-        String bucket = mediaFiles.getBucket();
-        String filePath = mediaFiles.getFilePath();
-
         try {
-            minioClient.statObject(
-                    StatObjectArgs.builder()
-                            .bucket(bucket)
-                            .object(filePath)
-                            .build());
-            log.info("文件存在: fileMd5={}", fileMd5);
+            minioClient.statObject(StatObjectArgs.builder()
+                    .bucket(mediaFiles.getBucket())
+                    .object(mediaFiles.getFilePath())
+                    .build());
+                    
             return RestResponse.success(true);
+        } catch (ErrorResponseException e) {
+            if (e.errorResponse().code().equals("NoSuchKey")) {
+                log.info("文件在MinIO中不存在: fileMd5={}", fileMd5);
+
+                return RestResponse.success(false);
+            }
+            log.error("检查文件异常: fileMd5={}", fileMd5, e);
+
+            return RestResponse.error("检查文件失败");
         } catch (Exception e) {
-            log.error("检查文件失败: fileMd5={}", fileMd5, e);
+            log.error("检查文件异常: fileMd5={}", fileMd5, e);
+
+            return RestResponse.error("检查文件失败");
         }
-        return RestResponse.error("检查文件失败");
     }
 
     @Override

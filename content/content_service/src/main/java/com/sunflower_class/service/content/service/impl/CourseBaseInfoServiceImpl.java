@@ -118,7 +118,7 @@ public class CourseBaseInfoServiceImpl implements CourseBaseInfoService {
     }
 
     /**
-     * 校验课程信息（新增和编辑共用）
+     * 校验课程信息
      */
     private void validateCourseInfo(AddCourseDto dto) {
         if (dto == null) {

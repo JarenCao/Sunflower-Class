@@ -35,6 +35,7 @@ public class MediaFilesController {
             @RequestBody(required = false) QueryMediaParamsDto queryMediaParamsDto) {
 
         Long companyId = 1000L;
+
         return mediaFileService.queryMediaFiels(companyId, pageParams, queryMediaParamsDto);
     }
 
@@ -45,8 +46,11 @@ public class MediaFilesController {
         Long companyId = 1002233L;
 
         UploadFileParamsDto params = new UploadFileParamsDto();
+
         params.setFilename(filedata.getOriginalFilename());
+
         params.setFileSize(filedata.getSize());
+
         params.setFileType("20101");
 
         return mediaFileService.uploadFiles(companyId, filedata, params);

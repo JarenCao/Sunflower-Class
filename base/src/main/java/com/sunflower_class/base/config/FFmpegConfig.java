@@ -8,7 +8,7 @@ import lombok.Data;
 @Data
 @Component
 @ConfigurationProperties(prefix = "ffmpeg")
-public class FFmpegConfig {
+public class FfmpegConfig {
 
     /** Docker镜像名称 */
     private String image = "linuxserver/ffmpeg:6.1.1";
