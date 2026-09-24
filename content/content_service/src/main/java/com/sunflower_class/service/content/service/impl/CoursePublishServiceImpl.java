@@ -16,6 +16,7 @@ import com.sunflower_class.model.po.CourseBase;
 import com.sunflower_class.model.po.CourseMarket;
 import com.sunflower_class.model.po.CoursePublish;
 import com.sunflower_class.model.po.CoursePublishPre;
+import com.sunflower_class.model.po.MqMessage;
 import com.sunflower_class.service.content.mapper.CourseBaseMapper;
 import com.sunflower_class.service.content.mapper.CourseMarketMapper;
 import com.sunflower_class.service.content.mapper.CoursePublishMapper;
@@ -161,8 +162,13 @@ public class CoursePublishServiceImpl implements CoursePublishService {
         courseBaseMapper.updateById(courseBase);
         log.debug("更新课程审核状态完成, courseId={}, status=30404", courseId);
 
+        saveCoursePublishMessage(courseId);
+
         coursePublishPreMapper.deleteById(courseId);
         log.info("课程发布完成, courseId={}, companyId={}", courseId, companyId);
+    }
+
+    private void saveCoursePublishMessage(Long coureseId){
     }
 
 }

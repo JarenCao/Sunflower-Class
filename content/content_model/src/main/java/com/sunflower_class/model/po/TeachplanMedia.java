@@ -10,14 +10,12 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.Data;
 
 /**
  * 课程计划媒资关联
  */
-@Getter
-@Setter
+@Data
 @TableName("teachplan_media")
 @Schema(description = "课程计划媒资关联")
 public class TeachplanMedia implements Serializable {

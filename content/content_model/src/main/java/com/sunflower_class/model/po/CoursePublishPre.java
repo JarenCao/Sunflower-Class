@@ -10,14 +10,12 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.Data;
 
 /**
  * 课程发布预发布
  */
-@Getter
-@Setter
+@Data
 @TableName("course_publish_pre")
 @Schema(description = "课程预发布信息")
 public class CoursePublishPre implements Serializable {

@@ -10,14 +10,12 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.Data;
 
 /**
  * 课程-教师关系表
  */
-@Getter
-@Setter
+@Data
 @TableName("course_teacher")
 @Schema(description = "课程教师信息")
 public class CourseTeacher implements Serializable {

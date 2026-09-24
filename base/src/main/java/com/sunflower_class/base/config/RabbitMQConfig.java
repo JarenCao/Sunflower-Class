@@ -1,82 +1,136 @@
 package com.sunflower_class.base.config;
 
-import org.springframework.amqp.core.*;
+import org.springframework.amqp.core.AcknowledgeMode;
+import org.springframework.amqp.core.Binding;
+import org.springframework.amqp.core.BindingBuilder;
+import org.springframework.amqp.core.DirectExchange;
+import org.springframework.amqp.core.Queue;
+import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.amqp.support.converter.DefaultJackson2JavaTypeMapper;
-import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
+import org.springframework.amqp.rabbit.listener.RabbitListenerContainerFactory;
+import org.springframework.amqp.support.converter.JacksonJsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import org.springframework.context.annotation.Primary;
 
 import lombok.extern.slf4j.Slf4j;
+import tools.jackson.databind.json.JsonMapper;
 
 @Slf4j
 @Configuration
-@SuppressWarnings("deprecation")
 public class RabbitMQConfig {
 
+    public static final String DIRECT_EXCHANGE = "direct.exchange";
+
+    public static final String COURSE_CACHE_QUEUE = "course.cache.queue";
+    public static final String COURSE_SEARCH_QUEUE = "course.search.queue";
+    public static final String COURSE_ORDER_QUEUE = "course.order.queue";
+
+    public static final String COURSE_CACHE_ROUTING_KEY = "course.cache";
+    public static final String COURSE_SEARCH_ROUTING_KEY = "course.search";
+    public static final String COURSE_ORDER_ROUTING_KEY = "course.order";
+
     @Bean
-    public MessageConverter messageConverter() {
-        ObjectMapper objectMapper = new ObjectMapper();
-        objectMapper.registerModule(new JavaTimeModule());
-        objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-        objectMapper.disable(SerializationFeature.FAIL_ON_EMPTY_BEANS);
+    @Primary
+    public MessageConverter messageConverter(JsonMapper objectMapper) {
 
-        Jackson2JsonMessageConverter converter = new Jackson2JsonMessageConverter(objectMapper);
-
-        // 关键：设置信任包
-        DefaultJackson2JavaTypeMapper typeMapper = new DefaultJackson2JavaTypeMapper();
-        typeMapper.setTrustedPackages("*"); // 信任所有包
-        converter.setJavaTypeMapper(typeMapper);
-
-        return converter;
+        return new JacksonJsonMessageConverter(
+                objectMapper,
+                "com.sunflower_class.**");
     }
 
     @Bean
-    public RabbitTemplate rabbitTemplate(ConnectionFactory connectionFactory, MessageConverter messageConverter) {
+    @Primary
+    public RabbitTemplate rabbitTemplate(ConnectionFactory connectionFactory,
+            MessageConverter messageConverter) {
         RabbitTemplate rabbitTemplate = new RabbitTemplate(connectionFactory);
         rabbitTemplate.setMessageConverter(messageConverter);
+
         rabbitTemplate.setConfirmCallback((correlationData, ack, cause) -> {
             if (!ack) {
-                log.error("消息未到达交换机: cause={}", cause);
+                log.error("消息未到达交换机: correlationId={}, cause={}",
+                        correlationData != null ? correlationData.getId() : null, cause);
             }
         });
+
+        rabbitTemplate.setReturnsCallback(returned -> {
+            log.error("消息未路由到队列: exchange={}, routingKey={}, replyCode={}, replyText={}",
+                    returned.getExchange(), returned.getRoutingKey(),
+                    returned.getReplyCode(), returned.getReplyText());
+        });
+
         return rabbitTemplate;
     }
 
     @Bean
-    public SimpleRabbitListenerContainerFactory rabbitListenerContainerFactory(
-            ConnectionFactory connectionFactory, MessageConverter messageConverter) {
+    @Primary
+    public RabbitListenerContainerFactory<?> rabbitListenerContainerFactory(
+            ConnectionFactory connectionFactory,
+            MessageConverter messageConverter) {
         SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
         factory.setConnectionFactory(connectionFactory);
         factory.setMessageConverter(messageConverter);
-
         factory.setAcknowledgeMode(AcknowledgeMode.MANUAL);
         factory.setPrefetchCount(1);
         factory.setConcurrentConsumers(1);
         factory.setMaxConcurrentConsumers(3);
-
         return factory;
     }
 
     @Bean
+    public DirectExchange directExchange() {
+        return new DirectExchange(DIRECT_EXCHANGE, true, false);
+    }
+
+    @Bean
+    public Queue courseCacheQueue() {
+        return QueueBuilder.durable(COURSE_CACHE_QUEUE).build();
+    }
+
+    @Bean
+    public Queue courseSearchQueue() {
+        return QueueBuilder.durable(COURSE_SEARCH_QUEUE).build();
+    }
+
+    @Bean
+    public Queue courseOrderQueue() {
+        return QueueBuilder.durable(COURSE_ORDER_QUEUE).build();
+    }
+
+    @Bean
     public Queue videoQueue() {
-        return new Queue("video.queue", true);
+        return QueueBuilder.durable("video.queue").build();
     }
 
     @Bean
-    public Exchange directExchange() {
-        return new DirectExchange("direct.exchange", true, false);
+    public Binding courseCacheBinding() {
+        return BindingBuilder
+                .bind(courseCacheQueue())
+                .to(directExchange())
+                .with(COURSE_CACHE_ROUTING_KEY);
     }
 
     @Bean
-    public Binding transcodeBinding(Queue videoQueue, Exchange directExchange) {
-        return BindingBuilder.bind(videoQueue).to(directExchange).with("video").noargs();
+    public Binding courseSearchBinding() {
+        return BindingBuilder
+                .bind(courseSearchQueue())
+                .to(directExchange())
+                .with(COURSE_SEARCH_ROUTING_KEY);
+    }
+
+    @Bean
+    public Binding courseOrderBinding() {
+        return BindingBuilder
+                .bind(courseOrderQueue())
+                .to(directExchange())
+                .with(COURSE_ORDER_ROUTING_KEY);
+    }
+
+    @Bean
+    public Binding videoBinding() {
+        return BindingBuilder.bind(videoQueue()).to(directExchange()).with("video");
     }
 }

@@ -8,14 +8,12 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.Data;
 
 /**
  * 课程营销信息
  */
-@Getter
-@Setter
+@Data
 @TableName("course_market")
 @Schema(description = "课程营销信息")
 public class CourseMarket implements Serializable {
