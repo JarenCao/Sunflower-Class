@@ -1,11 +1,12 @@
 package com.sunflower_class.service.content.service;
 
+import com.sunflower_class.model.dto.CourseCategoryTreeDto;
 import java.util.List;
 
-import com.sunflower_class.model.dto.CourseCategoryTreeDto;
-
+/**
+ * 课程分类树查询的业务契约。
+ */
 public interface CourseCategroyService {
-
     /**
      * 查询课程分类树
      *

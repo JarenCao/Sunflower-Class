@@ -3,14 +3,25 @@ package com.sunflower_class.model.dto;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
+/**
+ * 上传文件的业务元数据，随文件内容一起交给媒资保存服务。
+ */
 @Data
 @Schema(description = "上传文件请求参数")
 public class UploadFileParamsDto {
 
-    @Schema(description = "文件名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "课程介绍视频.mp4")
+    @Schema(
+        description = "文件名称",
+        requiredMode = Schema.RequiredMode.REQUIRED,
+        example = "课程介绍视频.mp4"
+    )
     private String filename;
 
-    @Schema(description = "文件类型（20101=图片，20102=视频，20103=其它）", example = "20101", allowableValues = {"20101", "20102", "20103"})
+    @Schema(
+        description = "文件类型（20101=图片，20102=视频，20103=其它）",
+        example = "20101",
+        allowableValues = { "20101", "20102", "20103" }
+    )
     private String fileType;
 
     @Schema(description = "文件大小（字节）", example = "10485760")

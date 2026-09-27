@@ -1,13 +1,14 @@
 package com.sunflower_class.model.po;
 
+import com.baomidou.mybatisplus.annotation.TableName;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
 import java.time.LocalDateTime;
-
-import com.baomidou.mybatisplus.annotation.TableName;
-
-import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
+/**
+ * 业务消息历史模型，用于保存归档后的消息与处理信息。
+ */
 @Data
 @TableName("mq_message_history")
 @Schema(description = "MQ消息历史记录")
@@ -43,7 +44,11 @@ public class MqMessageHistory implements Serializable {
     @Schema(description = "通知次数", example = "3")
     private Integer informNum;
 
-    @Schema(description = "处理状态（0-初始，1-成功，2-失败）", example = "1", allowableValues = { "0", "1", "2" })
+    @Schema(
+        description = "处理状态（0-初始，1-成功，2-失败）",
+        example = "1",
+        allowableValues = { "0", "1", "2" }
+    )
     private Integer state;
 
     @Schema(description = "回复失败时间")

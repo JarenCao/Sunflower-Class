@@ -3,6 +3,9 @@ package com.sunflower_class.model.dto;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
+/**
+ * 媒资绑定请求，将教学计划编号与媒资编号、文件名关联。
+ */
 @Data
 @Schema(description = "绑定课程计划与媒资文件请求参数")
 public class BindTeachplanMediaDto {

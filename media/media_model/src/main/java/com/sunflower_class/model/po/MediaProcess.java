@@ -1,18 +1,19 @@
 package com.sunflower_class.model.po;
 
-import java.io.Serializable;
-import java.time.LocalDateTime;
-
 import com.baomidou.mybatisplus.annotation.FieldFill;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.io.Serializable;
+import java.time.LocalDateTime;
 import lombok.Data;
 import lombok.ToString;
 
+/**
+ * 待处理或失败的视频转码任务，记录重试次数及错误原因。
+ */
 @Data
 @ToString
 @TableName("media_process")
@@ -35,7 +36,7 @@ public class MediaProcess implements Serializable {
     @Schema(description = "文件存储路径", example = "/videos/2024/01/course.mp4")
     private String filePath;
 
-    @Schema(description = "处理状态（1-未处理，2-处理完成）", example = "1", allowableValues = { "1", "2" })
+    @Schema(description = "处理状态：20300隐藏、20301待处理、20302可用、20303失败、20304处理中")
     private String status;
 
     @Schema(description = "上传时间")

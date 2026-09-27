@@ -1,17 +1,18 @@
 package com.sunflower_class.model.po;
 
-import java.io.Serializable;
-import java.time.LocalDateTime;
-
 import com.baomidou.mybatisplus.annotation.FieldFill;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.io.Serializable;
+import java.time.LocalDateTime;
 import lombok.Data;
 
+/**
+ * 已归档转码任务，供处理结果追踪及重复消息判断使用。
+ */
 @Data
 @TableName("media_process_history")
 @Schema(description = "媒资处理历史记录")
@@ -33,7 +34,7 @@ public class MediaProcessHistory implements Serializable {
     @Schema(description = "文件存储路径", example = "/videos/2024/01/course.mp4")
     private String filePath;
 
-    @Schema(description = "处理状态（1-未处理，2-处理完成）", example = "2", allowableValues = { "1", "2" })
+    @Schema(description = "处理状态：20300隐藏、20301待处理、20302可用、20303失败、20304处理中")
     private String status;
 
     @Schema(description = "上传时间")

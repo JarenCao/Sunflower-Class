@@ -1,15 +1,13 @@
 package com.sunflower_class.model.po;
 
-import java.io.Serializable;
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
-
 import com.baomidou.mybatisplus.annotation.FieldFill;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.io.Serializable;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import lombok.Data;
 
 /**
@@ -106,7 +104,7 @@ public class CoursePublish implements Serializable {
     @TableField("offline_date")
     private LocalDateTime offlineDate;
 
-    @Schema(description = "发布状态（203001=未发布，203002=已发布，203003=下线）", example = "203002")
+    @Schema(description = "发布状态（30501=未发布，30502=已发布，30503=下线）", example = "30502")
     @TableField("status")
     private String status;
 
@@ -114,7 +112,7 @@ public class CoursePublish implements Serializable {
     @TableField("remark")
     private String remark;
 
-    @Schema(description = "收费类型（70101=免费课程，70102=收费课程）", example = "70102")
+    @Schema(description = "收费类型（30201=免费课程，30202=收费课程）", example = "30202")
     @TableField("charge")
     private String charge;
 

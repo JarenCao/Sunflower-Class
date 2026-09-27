@@ -2,6 +2,7 @@ package com.sunflower_class.model.dto;
 
 import com.sunflower_class.model.po.MqMessage;
 
-public class MqMessageDto extends MqMessage {
-
-}
+/**
+ * 业务消息的数据传输模型，用于承载消息处理相关字段。
+ */
+public class MqMessageDto extends MqMessage {}

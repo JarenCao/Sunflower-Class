@@ -1,19 +1,24 @@
 package com.sunflower_class.model.dto;
 
-import java.math.BigDecimal;
-
 import com.sunflower_class.model.po.CourseBase;
-
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.math.BigDecimal;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
+/**
+ * 课程详情与列表展示模型，组合课程基础信息、营销字段和分类名称。
+ */
 @Data
 @EqualsAndHashCode(callSuper = true)
 @Schema(description = "课程信息详情 DTO（包含课程基础信息 + 营销信息）")
 public class CourseBaseInfoDto extends CourseBase {
 
-    @Schema(description = "收费类型（30201=免费课程，30202=收费课程）", example = "30201", allowableValues = { "30201", "30202" })
+    @Schema(
+        description = "收费类型（30201=免费课程，30202=收费课程）",
+        example = "30201",
+        allowableValues = { "30201", "30202" }
+    )
     private String charge;
 
     @Schema(description = "课程现价", example = "199.00")

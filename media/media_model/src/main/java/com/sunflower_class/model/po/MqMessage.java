@@ -1,13 +1,14 @@
 package com.sunflower_class.model.po;
 
+import com.baomidou.mybatisplus.annotation.TableName;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
 import java.time.LocalDateTime;
-
-import com.baomidou.mybatisplus.annotation.TableName;
-
-import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
+/**
+ * 业务消息持久化模型，描述消息内容及处理进度；实体存在不代表生产消费流程已接通。
+ */
 @Data
 @TableName("mq_message")
 @Schema(description = "MQ消息记录")
@@ -43,7 +44,11 @@ public class MqMessage implements Serializable {
     @Schema(description = "通知次数", example = "3")
     private Integer informNum;
 
-    @Schema(description = "处理状态（0-初始，1-成功，2-失败）", example = "0", allowableValues = { "0", "1", "2" })
+    @Schema(
+        description = "处理状态（0-初始，1-成功，2-失败）",
+        example = "0",
+        allowableValues = { "0", "1", "2" }
+    )
     private Integer state;
 
     @Schema(description = "回复失败时间")

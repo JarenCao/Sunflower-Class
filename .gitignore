@@ -56,3 +56,7 @@ hs_err_pid*
 replay_pid*
 
 HELP.md
+.runtime/
+
+# 前端与格式化工具依赖
+node_modules/

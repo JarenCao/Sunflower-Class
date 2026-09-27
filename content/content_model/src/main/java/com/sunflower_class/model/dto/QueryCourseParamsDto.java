@@ -3,11 +3,17 @@ package com.sunflower_class.model.dto;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
+/**
+ * 课程列表筛选条件，包括课程名称、审核状态和发布状态。
+ */
 @Data
 @Schema(description = "课程查询条件")
 public class QueryCourseParamsDto {
 
-    @Schema(description = "审核状态", example = "30401:审核未通过,30402:未提交,30403:已提交,30404:审核通过")
+    @Schema(
+        description = "审核状态",
+        example = "30401:审核未通过,30402:未提交,30403:已提交,30404:审核通过"
+    )
     private String auditStatus;
 
     @Schema(description = "课程名称", example = "Java")

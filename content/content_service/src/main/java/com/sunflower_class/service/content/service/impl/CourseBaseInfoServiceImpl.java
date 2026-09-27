@@ -1,13 +1,6 @@
 package com.sunflower_class.service.content.service.impl;
 
-import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Optional;
-
-import org.springframework.beans.BeanUtils;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import static com.sunflower_class.base.model.BusinessCodes.*;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.StringUtils;
@@ -26,13 +19,26 @@ import com.sunflower_class.service.content.mapper.CourseBaseMapper;
 import com.sunflower_class.service.content.mapper.CourseCategoryMapper;
 import com.sunflower_class.service.content.mapper.CourseMarketMapper;
 import com.sunflower_class.service.content.service.CourseBaseInfoService;
-
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * 课程基础与营销信息的业务实现，负责参数校验、机构条件、分页组合及保存。
+ */
 @Slf4j
 @Service
 @Transactional
 public class CourseBaseInfoServiceImpl implements CourseBaseInfoService {
+
+    @Value("${sunflower.company-id}")
+    private Long companyId;
 
     @Autowired
     private CourseBaseMapper courseBaseMapper;
@@ -147,6 +153,14 @@ public class CourseBaseInfoServiceImpl implements CourseBaseInfoService {
             GlobalException.cast("课程图片不能为空");
         }
 
+        if (
+            !java.util.Set.of(LEVEL_BEGINNER, LEVEL_INTERMEDIATE, LEVEL_ADVANCED).contains(
+                dto.getGrade()
+            )
+        ) GlobalException.cast("课程等级编码无效");
+        if (
+            !java.util.Set.of(TEACH_RECORDED, TEACH_LIVE).contains(dto.getTeachmode())
+        ) GlobalException.cast("教学模式编码无效");
         validateCharge(dto);
     }
 
@@ -161,7 +175,10 @@ public class CourseBaseInfoServiceImpl implements CourseBaseInfoService {
             GlobalException.cast("收费类型不能为空");
         }
 
-        if ("30202".equals(charge)) {
+        if (!java.util.Set.of(CHARGE_FREE, CHARGE_PAID).contains(charge)) GlobalException.cast(
+            "收费类型编码无效"
+        );
+        if (CHARGE_PAID.equals(charge)) {
             if (price == null) {
                 GlobalException.cast("收费课程价格不能为空");
             }
@@ -170,7 +187,7 @@ public class CourseBaseInfoServiceImpl implements CourseBaseInfoService {
             }
         }
 
-        if ("30201".equals(charge)) {
+        if (CHARGE_FREE.equals(charge)) {
             if (price != null && price.compareTo(java.math.BigDecimal.ZERO) > 0) {
                 log.warn("免费课程价格应为0，当前价格：{}，将自动设置为0", price);
                 dto.setPrice(java.math.BigDecimal.ZERO);
@@ -180,13 +197,16 @@ public class CourseBaseInfoServiceImpl implements CourseBaseInfoService {
 
     /**
      * 分页查询课程列表
-     * 
+     *
      * @param pageParams      分页参数（页码、每页大小）
      * @param courseParamsDto 查询条件（课程名称、审核状态、发布状态）
      * @return 分页结果对象（包含数据列表和分页信息）
      */
     @Override
-    public PageResult<CourseBase> queryCourseBasePage(PageParams pageParams, QueryCourseParamsDto courseParamsDto) {
+    public PageResult<CourseBaseInfoDto> queryCourseBasePage(
+        PageParams pageParams,
+        QueryCourseParamsDto courseParamsDto
+    ) {
         // 参数空值处理
         if (pageParams == null) {
             pageParams = new PageParams();
@@ -197,31 +217,76 @@ public class CourseBaseInfoServiceImpl implements CourseBaseInfoService {
 
         // 构建查询条件
         LambdaQueryWrapper<CourseBase> lambdaQueryWrapper = new LambdaQueryWrapper<>();
-        lambdaQueryWrapper.like(StringUtils.isNotBlank(courseParamsDto.getCourseName()),
-                CourseBase::getName, courseParamsDto.getCourseName());
+        lambdaQueryWrapper.eq(CourseBase::getCompanyId, companyId);
+        lambdaQueryWrapper.orderByDesc(CourseBase::getCreateDate, CourseBase::getId);
+        lambdaQueryWrapper.like(
+            StringUtils.isNotBlank(courseParamsDto.getCourseName()),
+            CourseBase::getName,
+            courseParamsDto.getCourseName()
+        );
 
-        lambdaQueryWrapper.eq(StringUtils.isNotBlank(courseParamsDto.getAuditStatus()),
-                CourseBase::getAuditStatus, courseParamsDto.getAuditStatus());
-                
-        lambdaQueryWrapper.eq(StringUtils.isNotBlank(courseParamsDto.getPublishStatus()),
-                CourseBase::getStatus, courseParamsDto.getPublishStatus());
+        lambdaQueryWrapper.eq(
+            StringUtils.isNotBlank(courseParamsDto.getAuditStatus()),
+            CourseBase::getAuditStatus,
+            courseParamsDto.getAuditStatus()
+        );
+
+        lambdaQueryWrapper.eq(
+            StringUtils.isNotBlank(courseParamsDto.getPublishStatus()),
+            CourseBase::getStatus,
+            courseParamsDto.getPublishStatus()
+        );
 
         // 分页查询
         Page<CourseBase> page = new Page<>(pageParams.getPageNo(), pageParams.getPageSize());
         Page<CourseBase> selectPage = courseBaseMapper.selectPage(page, lambdaQueryWrapper);
 
         // 返回结果
-        List<CourseBase> items = selectPage.getRecords();
+        List<CourseBase> records = selectPage.getRecords();
+        // 按当前页课程 ID 批量补充收费信息，避免逐条查询；缺失记录保持为空。
+        java.util.Map<Long, CourseMarket> markets = records.isEmpty()
+            ? java.util.Map.of()
+            : courseMarketMapper
+                  .selectList(
+                      new LambdaQueryWrapper<CourseMarket>().in(
+                          CourseMarket::getId,
+                          records.stream().map(CourseBase::getId).toList()
+                      )
+                  )
+                  .stream()
+                  .collect(
+                      // 课程编号作为键，完整营销记录作为值，供当前页课程快速关联。
+                      java.util.stream.Collectors.toMap(CourseMarket::getId, market -> market)
+                  );
+        List<CourseBaseInfoDto> items = records
+            .stream()
+            // 逐条转换基础记录，仅在存在营销数据时补充收费字段。
+            .map(record -> {
+                CourseBaseInfoDto item = new CourseBaseInfoDto();
+                BeanUtils.copyProperties(record, item);
+                CourseMarket market = markets.get(record.getId());
+                if (market != null) {
+                    item.setCharge(market.getCharge());
+                    item.setPrice(market.getPrice());
+                    item.setOriginalPrice(market.getOriginalPrice());
+                }
+                return item;
+            })
+            .toList();
         Long total = selectPage.getTotal();
-        log.info("查询课程列表完成，总记录数：{}，当前页：{}，每页大小：{}",
-                total, page.getCurrent(), page.getSize());
+        log.info(
+            "查询课程列表完成，总记录数：{}，当前页：{}，每页大小：{}",
+            total,
+            page.getCurrent(),
+            page.getSize()
+        );
 
-        return new PageResult<CourseBase>(items, total, page.getCurrent(), page.getSize());
+        return new PageResult<CourseBaseInfoDto>(items, total, page.getCurrent(), page.getSize());
     }
 
     /**
      * 根据ID查询课程详情
-     * 
+     *
      * @param id 课程ID
      * @return 完整的课程信息 DTO
      */
@@ -234,20 +299,23 @@ public class CourseBaseInfoServiceImpl implements CourseBaseInfoService {
         }
 
         // 查询课程基础信息
-        CourseBase courseBase = Optional.ofNullable(courseBaseMapper.selectById(id))
-                .orElseThrow(() -> {
-                    log.error("课程不存在，课程ID：{}", id);
-                    GlobalException.cast("课程不存在");
-                    return null;
-                });
+        CourseBase courseBase = Optional.ofNullable(courseBaseMapper.selectById(id)).orElseThrow(
+            // 基础记录缺失时抛出课程不存在异常，而不是返回空详情。
+            () -> {
+                log.error("课程不存在，课程ID：{}", id);
+                GlobalException.cast("课程不存在");
+                return null;
+            }
+        );
 
         // 查询课程营销信息
-        CourseMarket courseMarket = Optional.ofNullable(courseMarketMapper.selectById(id))
-                .orElseThrow(() -> {
-                    log.error("课程营销信息不存在，课程ID：{}", id);
-                    GlobalException.cast("课程营销信息不存在");
-                    return null;
-                });
+        CourseMarket courseMarket = Optional.ofNullable(
+            courseMarketMapper.selectById(id)
+        ).orElseThrow(() -> {
+            log.error("课程营销信息不存在，课程ID：{}", id);
+            GlobalException.cast("课程营销信息不存在");
+            return null;
+        });
 
         // 构建返回结果
         CourseBaseInfoDto resultDto = buildResultDto(courseBase, courseMarket);
@@ -258,7 +326,7 @@ public class CourseBaseInfoServiceImpl implements CourseBaseInfoService {
 
     /**
      * 创建课程
-     * 
+     *
      * @param addCourseDto 新增课程信息 DTO
      * @return 完整的课程信息 DTO（包含基础信息 + 营销信息 + 分类名称）
      */
@@ -272,9 +340,10 @@ public class CourseBaseInfoServiceImpl implements CourseBaseInfoService {
         CourseBase courseBase = new CourseBase();
         BeanUtils.copyProperties(addCourseDto, courseBase);
         courseBase.setCreateDate(LocalDateTime.now());
+        courseBase.setCompanyId(companyId);
         courseBase.setChangeDate(LocalDateTime.now());
-        courseBase.setAuditStatus("30402"); // 默认未提交
-        courseBase.setStatus("30501"); // 默认未发布
+        courseBase.setAuditStatus(AUDIT_DRAFT); // 默认未提交
+        courseBase.setStatus(COURSE_DRAFT); // 默认未发布
 
         int insertResult = courseBaseMapper.insert(courseBase);
         if (insertResult == 0) {
@@ -295,7 +364,7 @@ public class CourseBaseInfoServiceImpl implements CourseBaseInfoService {
 
     /**
      * 更新课程信息
-     * 
+     *
      * @param companyId     当前登录用户的机构ID（用于权限校验）
      * @param editCourseDto 编辑课程信息 DTO（包含课程ID和要更新的字段）
      * @return 更新后的完整课程信息 DTO
@@ -320,7 +389,11 @@ public class CourseBaseInfoServiceImpl implements CourseBaseInfoService {
 
         // 验证机构权限
         if (companyId == null || !companyId.equals(existingCourse.getCompanyId())) {
-            log.error("无权限修改课程，公司ID：{}，课程所属公司ID：{}", companyId, existingCourse.getCompanyId());
+            log.error(
+                "无权限修改课程，公司ID：{}，课程所属公司ID：{}",
+                companyId,
+                existingCourse.getCompanyId()
+            );
             GlobalException.cast("不能修改非本机构课程");
         }
 
@@ -352,5 +425,4 @@ public class CourseBaseInfoServiceImpl implements CourseBaseInfoService {
         log.info("课程更新成功，课程ID：{}，课程名称：{}", id, resultDto.getName());
         return resultDto;
     }
-
 }

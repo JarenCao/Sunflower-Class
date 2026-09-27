@@ -1,15 +1,13 @@
 package com.sunflower_class.model.po;
 
-import java.io.Serializable;
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
-
 import com.baomidou.mybatisplus.annotation.FieldFill;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.io.Serializable;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import lombok.Data;
 
 /**
@@ -110,7 +108,7 @@ public class CoursePublishPre implements Serializable {
     @TableField("remark")
     private String remark;
 
-    @Schema(description = "收费类型", example = "70102")
+    @Schema(description = "收费类型", example = "30202")
     @TableField("charge")
     private String charge;
 

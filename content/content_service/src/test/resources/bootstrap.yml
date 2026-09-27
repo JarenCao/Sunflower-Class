@@ -5,7 +5,7 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://172.24.77.139:3306/sunflower_class?serverTimezone=Asia/Shanghai&useUnicode=true&useSSL=false&characterEncoding=utf8&allowPublicKeyRetrieval=true
     username: root
-    password: Cjlei520..
+    password: ${DB_PASSWORD}
 
 # 日志文件配置路径
 logging:

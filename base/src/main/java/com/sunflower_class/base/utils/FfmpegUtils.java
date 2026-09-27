@@ -7,21 +7,26 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+/**
+ * 协调 Windows、WSL 和 Docker 的视频转码工具，负责文件搬运、进程执行和临时文件清理。
+ */
 @Slf4j
 @Component
 public class FfmpegUtils {
 
-    private static final String WSL_WORK_DIR = "/home/jarencao/ffmpeg/temp";
-    private static final String WSL_DISTRO = "Ubuntu-24.04";
-    private static final long TRANSCODE_TIMEOUT_MINUTES = 30;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.sunflower_class.base.config.FFmpegConfig config;
 
+    /**
+     * 将本地视频复制到 WSL，调用 Docker 中的 FFmpeg 转码并取回输出；成功返回 true，失败返回 false。
+     */
     public boolean executeTranscode(String inputPath, String outputPath) {
-        if (inputPath == null || inputPath.isEmpty()
-                || outputPath == null || outputPath.isEmpty()) {
+        if (
+            inputPath == null || inputPath.isEmpty() || outputPath == null || outputPath.isEmpty()
+        ) {
             log.error("输入或输出路径为空");
             return false;
         }
@@ -29,15 +34,13 @@ public class FfmpegUtils {
         String inputFileName = getFileName(inputPath);
         String outputFileName = getFileName(outputPath);
 
-
         String uid = UUID.randomUUID().toString().substring(0, 8);
-        String wslInputPath = WSL_WORK_DIR + "/" + uid + "_" + inputFileName;
-        String wslOutputPath = WSL_WORK_DIR + "/" + uid + "_" + outputFileName;
+        String wslInputPath = config.getHostDataDir() + "/" + uid + "_" + inputFileName;
+        String wslOutputPath = config.getHostDataDir() + "/" + uid + "_" + outputFileName;
 
         log.info("输入文件: {}, 输出文件: {}", inputPath, outputPath);
 
         try {
-
             ensureWslWorkDir();
 
             if (!copyToWsl(inputPath, wslInputPath)) {
@@ -48,31 +51,33 @@ public class FfmpegUtils {
             List<String> command = new ArrayList<>();
             command.add("wsl");
             command.add("-d");
-            command.add(WSL_DISTRO);
+            command.add(config.getWslDistro());
             command.add("docker");
             command.add("run");
             command.add("--rm");
             command.add("-v");
-            command.add(WSL_WORK_DIR + ":/data");
-            command.add("linuxserver/ffmpeg:6.1.1");
+            command.add(config.getHostDataDir() + ":" + config.getContainerDataDir());
+            command.add(config.getImage());
             command.add("-i");
-            command.add("/data/" + uid + "_" + inputFileName);
-            command.add("-c:v");
-            command.add("libx264");
+            command.add(config.getContainerDataDir() + "/" + uid + "_" + inputFileName);
+            command.add("-vcodec");
+            command.add(config.getVideoCodec());
             command.add("-crf");
-            command.add("18");
+            command.add(String.valueOf(config.getCrf()));
             command.add("-preset");
-            command.add("fast");
-            command.add("-c:a");
-            command.add("aac");
+            command.add(config.getPreset());
+            command.add("-acodec");
+            command.add(config.getAudioCodec());
             command.add("-b:a");
-            command.add("192k");
+            command.add(config.getAudioBitrate());
             command.add("-pix_fmt");
-            command.add("yuv420p");
-            command.add("-movflags");
-            command.add("+faststart");
+            command.add(config.getPixFormat());
+            if (Boolean.TRUE.equals(config.getFastStart())) {
+                command.add("-movflags");
+                command.add("+faststart");
+            }
             command.add("-y");
-            command.add("/data/" + uid + "_" + outputFileName);
+            command.add(config.getContainerDataDir() + "/" + uid + "_" + outputFileName);
 
             log.info("执行转码命令: {}", String.join(" ", command));
 
@@ -80,18 +85,21 @@ public class FfmpegUtils {
             processBuilder.redirectErrorStream(true);
             Process process = processBuilder.start();
 
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(process.getInputStream()))) {
+            try (
+                BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream())
+                )
+            ) {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     log.info("FFmpeg: {}", line);
                 }
             }
 
-            boolean finished = process.waitFor(TRANSCODE_TIMEOUT_MINUTES, TimeUnit.MINUTES);
+            boolean finished = process.waitFor(config.getTimeoutMinutes(), TimeUnit.MINUTES);
             if (!finished) {
                 process.destroyForcibly();
-                log.error("FFmpeg 转码超时（超过 {} 分钟）", TRANSCODE_TIMEOUT_MINUTES);
+                log.error("FFmpeg 转码超时（超过 {} 分钟）", config.getTimeoutMinutes());
                 return false;
             }
 
@@ -108,7 +116,6 @@ public class FfmpegUtils {
 
             log.info("FFmpeg 转码成功: {}", outputPath);
             return true;
-
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             log.error("转码线程被中断", e);
@@ -121,9 +128,19 @@ public class FfmpegUtils {
         }
     }
 
+    /**
+     * 在配置的 WSL 发行版中创建转码工作目录，供 Docker 挂载使用。
+     */
     private void ensureWslWorkDir() {
         try {
-            String[] cmd = {"wsl", "-d", WSL_DISTRO, "mkdir", "-p", WSL_WORK_DIR};
+            String[] cmd = {
+                "wsl",
+                "-d",
+                config.getWslDistro(),
+                "mkdir",
+                "-p",
+                config.getHostDataDir(),
+            };
             Process p = new ProcessBuilder(cmd).start();
             p.waitFor(10, TimeUnit.SECONDS);
         } catch (Exception e) {
@@ -131,6 +148,9 @@ public class FfmpegUtils {
         }
     }
 
+    /**
+     * 将 Windows 盘符路径转换为 WSL 的 /mnt 路径，用于跨系统复制文件。
+     */
     private String toWslMountPath(String windowsPath) {
         String normalized = windowsPath.replace("\\", "/");
         if (normalized.length() >= 2 && normalized.charAt(1) == ':') {
@@ -140,17 +160,23 @@ public class FfmpegUtils {
         return normalized;
     }
 
+    /**
+     * 将 Windows 输入文件复制到指定 WSL 路径，以布尔值表示复制是否成功。
+     */
     private boolean copyToWsl(String windowsPath, String wslPath) {
         try {
             String mntPath = toWslMountPath(windowsPath);
-            String[] cmd = {"wsl", "-d", WSL_DISTRO, "cp", mntPath, wslPath};
+            String[] cmd = { "wsl", "-d", config.getWslDistro(), "cp", mntPath, wslPath };
 
             ProcessBuilder pb = new ProcessBuilder(cmd);
             pb.redirectErrorStream(true);
             Process process = pb.start();
 
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(process.getInputStream()))) {
+            try (
+                BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream())
+                )
+            ) {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     log.warn("copyToWsl: {}", line);
@@ -177,6 +203,9 @@ public class FfmpegUtils {
         }
     }
 
+    /**
+     * 将 WSL 转码结果复制回 Windows 输出路径，以布尔值表示复制是否成功。
+     */
     private boolean copyFromWsl(String wslPath, String windowsPath) {
         try {
             File parentDir = new File(windowsPath).getParentFile();
@@ -185,14 +214,17 @@ public class FfmpegUtils {
             }
 
             String mntPath = toWslMountPath(windowsPath);
-            String[] cmd = {"wsl", "-d", WSL_DISTRO, "cp", wslPath, mntPath};
+            String[] cmd = { "wsl", "-d", config.getWslDistro(), "cp", wslPath, mntPath };
 
             ProcessBuilder pb = new ProcessBuilder(cmd);
             pb.redirectErrorStream(true);
             Process process = pb.start();
 
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(process.getInputStream()))) {
+            try (
+                BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream())
+                )
+            ) {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     log.warn("copyFromWsl: {}", line);
@@ -219,9 +251,20 @@ public class FfmpegUtils {
         }
     }
 
+    /**
+     * 尝试清理本次任务在 WSL 中的输入和输出文件，释放临时存储空间。
+     */
     private void cleanWslFiles(String inputPath, String outputPath) {
         try {
-            String[] cmd = {"wsl", "-d", WSL_DISTRO, "rm", "-f", inputPath, outputPath};
+            String[] cmd = {
+                "wsl",
+                "-d",
+                config.getWslDistro(),
+                "rm",
+                "-f",
+                inputPath,
+                outputPath,
+            };
             Process p = new ProcessBuilder(cmd).start();
             p.waitFor(10, TimeUnit.SECONDS);
         } catch (Exception e) {
@@ -229,6 +272,9 @@ public class FfmpegUtils {
         }
     }
 
+    /**
+     * 提取路径末尾的文件名，用于构建本次转码的临时文件名称。
+     */
     private String getFileName(String path) {
         if (path == null || path.isEmpty()) {
             return "temp_file";

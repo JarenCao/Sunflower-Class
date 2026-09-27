@@ -1,35 +1,92 @@
 package com.sunflower_class.api;
 
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RestController;
+import static com.sunflower_class.base.model.BusinessCodes.*;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.sunflower_class.base.exception.GlobalException;
+import com.sunflower_class.base.model.PageResult;
 import com.sunflower_class.base.model.RestResponse;
+import com.sunflower_class.model.po.CoursePublish;
+import com.sunflower_class.service.content.mapper.CoursePublishMapper;
 import com.sunflower_class.service.content.service.CoursePublishService;
-
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * 课程提交审核与发布入口，同时向学员端提供已发布快照的只读查询。
+ */
 @Tag(name = "课程发布", description = "课程发布相关接口")
 @RestController
 public class CoursePublishController {
 
+    @Value("${sunflower.company-id}")
+    private Long companyId;
+
     @Autowired
     private CoursePublishService coursePublishService;
 
+    @Autowired
+    private CoursePublishMapper coursePublishMapper;
+
+    /** 学员只读取已发布快照，管理端草稿修改不会直接替换这里的数据。 */
+    @GetMapping("/published-courses")
+    public PageResult<CoursePublish> publishedCourses(
+        @RequestParam(defaultValue = "1") long pageNo,
+        @RequestParam(defaultValue = "20") long pageSize,
+        @RequestParam(defaultValue = "") String q
+    ) {
+        var query = new LambdaQueryWrapper<CoursePublish>()
+            .eq(CoursePublish::getStatus, COURSE_PUBLISHED)
+            .like(!q.isBlank(), CoursePublish::getName, q)
+            .orderByDesc(CoursePublish::getOnlineDate);
+        var page = coursePublishMapper.selectPage(
+            new Page<>(Math.max(1, pageNo), Math.min(100, Math.max(1, pageSize))),
+            query
+        );
+        return new PageResult<>(
+            page.getRecords(),
+            page.getTotal(),
+            page.getCurrent(),
+            page.getSize()
+        );
+    }
+
+    /**
+     * 读取指定编号的已发布课程快照，未发布或不存在的课程不返回详情。
+     */
+    @GetMapping("/published-courses/{id}")
+    public CoursePublish publishedCourse(@PathVariable Long id) {
+        var course = coursePublishMapper.selectById(id);
+        if (course == null || !COURSE_PUBLISHED.equals(course.getStatus())) GlobalException.cast(
+            "课程未发布或不存在"
+        );
+        return course;
+    }
+
+    /**
+     * 校验机构归属、当前审核状态、教学计划及营销信息，生成待审核快照并更新审核状态。
+     */
     @Operation(summary = "提交课程审核", description = "将指定课程提交审核，审核通过后可发布")
     @PostMapping("/courseaudit/commit/{courseId}")
     public RestResponse commitAudit(@PathVariable("courseId") Long courseId) {
-        Long companyId = 1232141425L;
         coursePublishService.commitAudit(companyId, courseId);
         return RestResponse.success();
     }
 
+    /**
+     * 使用配置机构编号请求发布课程，返回业务处理结果；发布资格由服务层检查。
+     */
     @Operation(summary = "发布课程", description = "将审核通过的课程进行发布，发布后学员可查看学习")
     @PostMapping("/coursepublish/{courseId}")
     public RestResponse coursepublish(@PathVariable("courseId") Long courseId) {
-        Long companyId = 1232141425L;
         coursePublishService.publishCourse(companyId, courseId);
         return RestResponse.success();
     }

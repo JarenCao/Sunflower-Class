@@ -1,12 +1,6 @@
 package com.sunflower_class.service.content.service.impl;
 
-import java.time.LocalDateTime;
-import java.util.List;
-
-import org.springframework.beans.BeanUtils;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import static com.sunflower_class.base.model.BusinessCodes.*;
 
 import com.alibaba.fastjson.JSON;
 import com.sunflower_class.base.exception.GlobalException;
@@ -24,9 +18,17 @@ import com.sunflower_class.service.content.mapper.CoursePublishPreMapper;
 import com.sunflower_class.service.content.service.CourseBaseInfoService;
 import com.sunflower_class.service.content.service.CoursePublishService;
 import com.sunflower_class.service.content.service.TeachPlanService;
-
+import java.time.LocalDateTime;
+import java.util.List;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * 维护审核快照及正式发布快照；发布消息持久化入口目前仍待实现。
+ */
 @Slf4j
 @Service
 public class CoursePublishServiceImpl implements CoursePublishService {
@@ -49,6 +51,9 @@ public class CoursePublishServiceImpl implements CoursePublishService {
     @Autowired
     private CoursePublishMapper coursePublishMapper;
 
+    /**
+     * 校验机构归属、当前审核状态、教学计划及营销信息，生成待审核快照并更新审核状态。
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void commitAudit(Long companyId, Long courseId) {
@@ -59,17 +64,29 @@ public class CoursePublishServiceImpl implements CoursePublishService {
             log.warn("课程不存在, courseId={}", courseId);
             GlobalException.cast("课程不存在，请检查课程ID是否正确");
         }
-        log.debug("查询到课程基础信息, courseId={}, courseName={}, auditStatus={}", courseId, courseBase.getName(),
-                courseBase.getAuditStatus());
+        log.debug(
+            "查询到课程基础信息, courseId={}, courseName={}, auditStatus={}",
+            courseId,
+            courseBase.getName(),
+            courseBase.getAuditStatus()
+        );
 
         if (!courseBase.getCompanyId().equals(companyId)) {
-            log.warn("机构权限校验失败, courseId={}, courseCompanyId={}, requestCompanyId={}", courseId,
-                    courseBase.getCompanyId(), companyId);
+            log.warn(
+                "机构权限校验失败, courseId={}, courseCompanyId={}, requestCompanyId={}",
+                courseId,
+                courseBase.getCompanyId(),
+                companyId
+            );
             GlobalException.cast("无权限操作该课程，只能修改本机构的课程信息");
         }
 
-        if ("30403".equals(courseBase.getAuditStatus())) {
-            log.warn("课程审核状态不允许提交, courseId={}, currentStatus={}", courseId, courseBase.getAuditStatus());
+        if (AUDIT_PENDING.equals(courseBase.getAuditStatus())) {
+            log.warn(
+                "课程审核状态不允许提交, courseId={}, currentStatus={}",
+                courseId,
+                courseBase.getAuditStatus()
+            );
             GlobalException.cast("课程当前状态不允许提交审核，请等待审核结束或联系管理员");
         }
 
@@ -78,8 +95,11 @@ public class CoursePublishServiceImpl implements CoursePublishService {
             log.warn("教学计划为空, courseId={}", courseId);
             GlobalException.cast("课程缺少教学计划，请先添加教学计划后再提交审核");
         }
-        log.debug("查询到教学计划, courseId={}, teachPlanCount={}", courseId,
-                teachPlanTree != null ? teachPlanTree.size() : 0);
+        log.debug(
+            "查询到教学计划, courseId={}, teachPlanCount={}",
+            courseId,
+            teachPlanTree != null ? teachPlanTree.size() : 0
+        );
 
         CourseMarket courseMarket = courseMarketMapper.selectById(courseId);
         if (courseMarket == null) {
@@ -100,7 +120,7 @@ public class CoursePublishServiceImpl implements CoursePublishService {
 
         coursePublishPre.setCompanyId(companyId);
         coursePublishPre.setCreateDate(LocalDateTime.now());
-        coursePublishPre.setStatus("30403");
+        coursePublishPre.setStatus(AUDIT_PENDING);
 
         CoursePublishPre result = coursePublishPreMapper.selectById(courseId);
         if (result == null) {
@@ -111,11 +131,14 @@ public class CoursePublishServiceImpl implements CoursePublishService {
             log.info("更新课程预发布记录成功, courseId={}", courseId);
         }
 
-        courseBase.setStatus("30403");
+        courseBase.setAuditStatus(AUDIT_PENDING);
         courseBaseMapper.updateById(courseBase);
         log.info("课程提交审核完成, courseId={}, companyId={}, status=30403", courseId, companyId);
     }
 
+    /**
+     * 校验预发布快照的机构归属和审核通过状态，保存正式快照、更新发布状态并删除预发布记录。
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void publishCourse(Long companyId, Long courseId) {
@@ -128,27 +151,34 @@ public class CoursePublishServiceImpl implements CoursePublishService {
         }
 
         if (!coursePublishPre.getCompanyId().equals(companyId)) {
-            log.warn("机构权限校验失败, courseId={}, courseCompanyId={}, requestCompanyId={}",
-                    courseId, coursePublishPre.getCompanyId(), companyId);
+            log.warn(
+                "机构权限校验失败, courseId={}, courseCompanyId={}, requestCompanyId={}",
+                courseId,
+                coursePublishPre.getCompanyId(),
+                companyId
+            );
             GlobalException.cast("无权限操作该课程，只能修改本机构的课程信息");
         }
 
-        if (!"30404".equals(coursePublishPre.getStatus())) {
-            log.warn("课程未通过审核, courseId={}, currentStatus={}", courseId, coursePublishPre.getStatus());
+        if (!AUDIT_APPROVED.equals(coursePublishPre.getStatus())) {
+            log.warn(
+                "课程未通过审核, courseId={}, currentStatus={}",
+                courseId,
+                coursePublishPre.getStatus()
+            );
             GlobalException.cast("该课程未通过审核");
         }
 
         CoursePublish coursePublish = new CoursePublish();
         BeanUtils.copyProperties(coursePublishPre, coursePublish);
-        coursePublish.setStatus("30404");
+        coursePublish.setStatus(COURSE_PUBLISHED);
+        coursePublish.setOnlineDate(LocalDateTime.now());
 
         CoursePublish existingPublish = coursePublishMapper.selectById(courseId);
         if (existingPublish == null) {
-
             coursePublishMapper.insert(coursePublish);
             log.info("新增课程发布记录成功, courseId={}", courseId);
         } else {
-
             coursePublishMapper.updateById(coursePublish);
             log.info("更新课程发布记录成功, courseId={}", courseId);
         }
@@ -158,7 +188,8 @@ public class CoursePublishServiceImpl implements CoursePublishService {
             log.error("课程基础信息不存在, courseId={}", courseId);
             GlobalException.cast("课程信息异常，请稍后重试");
         }
-        courseBase.setAuditStatus("30404");
+        courseBase.setAuditStatus(AUDIT_APPROVED);
+        courseBase.setStatus(COURSE_PUBLISHED);
         courseBaseMapper.updateById(courseBase);
         log.debug("更新课程审核状态完成, courseId={}, status=30404", courseId);
 
@@ -168,7 +199,8 @@ public class CoursePublishServiceImpl implements CoursePublishService {
         log.info("课程发布完成, courseId={}, companyId={}", courseId, companyId);
     }
 
-    private void saveCoursePublishMessage(Long coureseId){
-    }
-
+    /**
+     * 课程发布消息的预留入口，目前为空实现；调用此方法不会保存消息或触发搜索、缓存同步。
+     */
+    private void saveCoursePublishMessage(Long coureseId) {}
 }

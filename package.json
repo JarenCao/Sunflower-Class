@@ -1,0 +1,12 @@
+{
+  "devDependencies": {
+    "prettier": "^3.9.9",
+    "prettier-plugin-java": "^2.10.4"
+  },
+  "name": "xiaokuihua-code-tools",
+  "private": true,
+  "scripts": {
+    "format": "prettier --write \"frontend-{admin,student}/src/**/*.{vue,ts,css}\" \"frontend-{admin,student}/*.{ts,html,json}\" \"{base,content,media,gateway}/**/src/**/*.java\" \"scripts/*.java\"",
+    "format:check": "prettier --check \"frontend-{admin,student}/src/**/*.{vue,ts,css}\" \"frontend-{admin,student}/*.{ts,html,json}\" \"{base,content,media,gateway}/**/src/**/*.java\" \"scripts/*.java\""
+  }
+}

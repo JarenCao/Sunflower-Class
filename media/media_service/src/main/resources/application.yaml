@@ -12,13 +12,13 @@ spring:
     nacos:
       config:
         enabled: true
-        server-addr: 172.24.77.139:8848
-        namespace: dev
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        namespace: ${NACOS_NAMESPACE:dev}
         group: sunflower_class
         file-extension: yaml
         refresh-enabled: true
       discovery:
         enabled: true
-        server-addr: 172.24.77.139:8848
-        namespace: dev
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        namespace: ${NACOS_NAMESPACE:dev}
         group: sunflower_class

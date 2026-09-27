@@ -1,20 +1,26 @@
 package com.sunflower_class.base.config;
 
+import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
-import lombok.Data;
-
+/**
+ * FFmpeg 转码配置：描述 WSL 发行版、容器镜像、挂载目录和音视频编码参数。
+ */
 @Data
 @Component
 @ConfigurationProperties(prefix = "ffmpeg")
-public class FfmpegConfig {
+public class FFmpegConfig {
 
     /** Docker镜像名称 */
     private String image = "linuxserver/ffmpeg:6.1.1";
 
     /** 宿主机数据目录映射 */
-    private String hostDataDir = System.getProperty("user.home") + "/ffmpeg";
+    private String hostDataDir = "/tmp/xiaokuihua-ffmpeg";
+
+    private String wslDistro = "Ubuntu-24.04";
+
+    private long timeoutMinutes = 30;
 
     /** 容器内数据目录 */
     private String containerDataDir = "/data";
@@ -31,13 +37,13 @@ public class FfmpegConfig {
     /**
      * 编码速度预设: ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow
      */
-    private String preset = "medium";
+    private String preset = "fast";
 
     /** 音频编码器 */
-    private String audioCodec = "libfdk_aac";
+    private String audioCodec = "aac";
 
     /** 音频比特率 */
-    private String audioBitrate = "192";
+    private String audioBitrate = "192k";
 
     /** 像素格式 */
     private String pixFormat = "yuv420p";

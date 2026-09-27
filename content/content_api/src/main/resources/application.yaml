@@ -1,9 +1,4 @@
-# server:
-#   servlet:
-#     context-path: /content
-#   port: 63040
 
-# 微服务配置
 spring:
   application:
     name: content-api
@@ -19,41 +14,24 @@ spring:
     nacos:
       config:
         enabled: true
-        server-addr: 172.24.77.139:8848
-        namespace: dev
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        namespace: ${NACOS_NAMESPACE:dev}
         group: sunflower_class
         file-extension: yaml
         refresh-enabled: true
       discovery:
         enabled: true
-        server-addr: 172.24.77.139:8848
-        namespace: dev
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        namespace: ${NACOS_NAMESPACE:dev}
         group: sunflower_class
-#   datasource:
-#     driver-class-name: com.mysql.cj.jdbc.Driver
-#     url: jdbc:mysql://172.24.77.139:3306/sunflower_class?serverTimezone=Asia/Shanghai&useUnicode=true&useSSL=false&characterEncoding=utf8&allowPublicKeyRetrieval=true
-#     username: root
-#     password: Cjlei520..
 
-# # Swagger 配置
-# springdoc:
-#   api-docs:
-#     path: /v3/api-docs
-#   swagger-ui:
-#     path: /swagger-ui.html
-#     tags-sorter: alpha
-#     operations-sorter: alpha
-#   packages-to-scan: com.sunflower_class.api
 
-# # Knife4j 配置
-# knife4j:
-#   enable: ${SWAGGER_ENABLED:true}
-#   setting:
-#     language: zh-CN
 
-# 日志文件配置路径
 logging:
   level:
     com.alibaba.cloud.nacos: DEBUG
     com.alibaba.nacos: DEBUG
   config: classpath:logback.xml
+
+sunflower:
+  company-id: ${SUNFLOWER_COMPANY_ID:1232141425}

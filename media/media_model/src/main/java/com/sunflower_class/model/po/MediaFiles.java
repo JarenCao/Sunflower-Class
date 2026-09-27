@@ -1,17 +1,18 @@
 package com.sunflower_class.model.po;
 
-import java.io.Serializable;
-import java.time.LocalDateTime;
-
 import com.baomidou.mybatisplus.annotation.FieldFill;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.io.Serializable;
+import java.time.LocalDateTime;
 import lombok.Data;
 
+/**
+ * 媒资主记录，保存文件归属、存储位置、类型和处理状态。
+ */
 @Data
 @TableName("media_files")
 @Schema(description = "媒资文件信息")
@@ -30,8 +31,11 @@ public class MediaFiles implements Serializable {
     @Schema(description = "文件名称", example = "课程介绍视频.mp4")
     private String filename;
 
-    @Schema(description = "文件类型（20101=图片，20102=视频，20103=其它）", example = "20101", allowableValues = { "20101",
-            "20102", "20103" })
+    @Schema(
+        description = "文件类型（20101=图片，20102=视频，20103=其它）",
+        example = "20101",
+        allowableValues = { "20101", "20102", "20103" }
+    )
     private String fileType;
 
     @Schema(description = "文件标签", example = "Java,Spring,教程")
@@ -60,14 +64,17 @@ public class MediaFiles implements Serializable {
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime changeDate;
 
-    @Schema(description = "处理状态（1-未处理，2-处理完成）", example = "1", allowableValues = { "1", "2" })
+    @Schema(description = "处理状态：20300隐藏、20301待处理、20302可用、20303失败、20304处理中")
     private String status;
 
     @Schema(description = "备注", example = "已转码完成")
     private String remark;
 
-    @Schema(description = "审核状态（20201=审核未通过，20202=未审核，20203=审核通过）", example = "20201", allowableValues = { "20201",
-            "20202", "20203" })
+    @Schema(
+        description = "审核状态（20201=审核未通过，20202=未审核，20203=审核通过）",
+        example = "20201",
+        allowableValues = { "20201", "20202", "20203" }
+    )
     private String auditStatus;
 
     @Schema(description = "审核意见", example = "内容合规，审核通过")

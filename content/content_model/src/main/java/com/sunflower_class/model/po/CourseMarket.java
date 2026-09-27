@@ -1,13 +1,11 @@
 package com.sunflower_class.model.po;
 
-import java.io.Serializable;
-import java.math.BigDecimal;
-
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.io.Serializable;
+import java.math.BigDecimal;
 import lombok.Data;
 
 /**
@@ -24,7 +22,11 @@ public class CourseMarket implements Serializable {
     @TableId("id")
     private Long id;
 
-    @Schema(description = "收费类型（70101=免费课程，70102=收费课程）", example = "70101", allowableValues = {"70101", "70102"})
+    @Schema(
+        description = "收费类型（30201=免费课程，30202=收费课程）",
+        example = "30201",
+        allowableValues = { "30201", "30202" }
+    )
     @TableField("charge")
     private String charge;
 
