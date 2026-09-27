@@ -60,3 +60,6 @@ HELP.md
 
 # 前端与格式化工具依赖
 node_modules/
+
+# Test sources and resources
+**/src/test/
