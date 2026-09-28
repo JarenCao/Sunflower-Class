@@ -7,7 +7,7 @@ import com.sunflower_class.model.dto.BindTeachplanMediaDto;
  */
 public interface AssociationMediaService {
     /**
-     * 检查教学计划存在后，在事务中删除旧媒资关联并写入新关联；当前未校验媒资可用性和登录机构。
+     * 校验课程归属、媒资文件及可用状态，再以事务替换教学计划的旧绑定。
      */
     public void associationMedia(BindTeachplanMediaDto bindTeachplanMediaDto);
 }

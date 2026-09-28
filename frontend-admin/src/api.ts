@@ -97,6 +97,16 @@ export async function addTeachplan(
     isPreview: '0',
   })
 }
+
+// 删除章时后端同步删除小节和绑定；媒资文件本身继续保留。
+export async function deleteTeachplan(id: number): Promise<void> {
+  await http.delete(`/teachplan/${id}`)
+}
+
+// 只在同一父节点内移动一位，由后端重新编号并校验机构归属。
+export async function moveTeachplan(id: number, direction: 'up' | 'down'): Promise<void> {
+  await http.put(`/teachplan/${id}/move`, null, { params: { direction } })
+}
 // 媒资列表按文件名筛选，每页数量与其他管理列表保持一致。
 export async function listMedia(page = 1, filename = ''): Promise<PageResult<MediaFile>> {
   return (
@@ -177,4 +187,14 @@ export async function submitAudit(courseId: number): Promise<void> {
 // 请求服务端发布课程；是否允许发布由后端审核状态校验决定。
 export async function publishCourse(courseId: number): Promise<void> {
   check((await http.post(`/coursepublish/${courseId}`)).data)
+}
+
+// 下架课程时同步撤销学员端公开快照；后端会校验当前机构与发布状态。
+export async function offlineCourse(courseId: number): Promise<void> {
+  check((await http.put(`/coursepublish/${courseId}/offline`)).data)
+}
+
+// 删除未发布或已下架课程及其关系记录，媒资文件仍由媒资服务保留。
+export async function deleteCourse(courseId: number): Promise<void> {
+  await http.delete(`/course/${courseId}`)
 }

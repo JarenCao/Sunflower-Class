@@ -13,14 +13,17 @@ import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 教学计划编排接口，提供目录查询、章或小节保存与媒资绑定。
+ * 教学计划编排接口，提供目录查询、保存、删除、同级排序与媒资绑定。
  */
 @Slf4j
 @CrossOrigin(origins = "*")
@@ -50,6 +53,20 @@ public class TeachPlanController {
     @PostMapping("/teachplan")
     public void addTeachPlan(@RequestBody @Valid AddTeachPlanDto addTeachPlanDto) {
         teachPlanService.saveTeachPlan(addTeachPlanDto);
+    }
+
+    /** 删除章时一并删除其小节及绑定，删除小节只影响当前小节。 */
+    @Operation(summary = "删除教学计划")
+    @DeleteMapping("/teachplan/{id}")
+    public void deleteTeachPlan(@PathVariable Long id) {
+        teachPlanService.deleteTeachPlan(id);
+    }
+
+    /** direction 仅接受 up 或 down，移动范围限于当前章的同级节点。 */
+    @Operation(summary = "调整教学计划同级顺序")
+    @PutMapping("/teachplan/{id}/move")
+    public void moveTeachPlan(@PathVariable Long id, @RequestParam String direction) {
+        teachPlanService.moveTeachPlan(id, direction);
     }
 
     /**

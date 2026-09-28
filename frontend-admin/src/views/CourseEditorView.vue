@@ -7,10 +7,12 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   addTeachplan,
   bindMedia,
+  deleteTeachplan,
   getCourse,
   getTeachplan,
   listCategories,
   listMedia,
+  moveTeachplan,
   saveCourse,
   uploadMedia,
 } from '../api'
@@ -22,6 +24,13 @@ const router = useRouter()
 const id = computed(() => (route.params.id === 'new' ? 0 : Number(route.params.id)))
 const activeTab = ref('info')
 const saving = ref(false)
+const planActionId = ref<number | null>(null)
+const courseStatus = ref('30501')
+const courseAuditStatus = ref('30402')
+// 审核中和已发布课程只允许查看；审核通过后的修改会撤销旧结论。
+const canEdit = computed(
+  () => courseStatus.value !== '30502' && courseAuditStatus.value !== '30403',
+)
 const categories = ref<Category[]>([])
 const plans = ref<Teachplan[]>([])
 const media = ref<MediaFile[]>([])
@@ -71,6 +80,13 @@ watch(
 async function refreshPlans() {
   if (id.value) plans.value = await getTeachplan(id.value)
 }
+// 目录或媒资变更后读取服务端状态，及时显示重新审核的要求。
+async function refreshCourseStatus() {
+  if (!id.value) return
+  const course = await getCourse(id.value)
+  courseStatus.value = course.status
+  courseAuditStatus.value = course.auditStatus
+}
 // 新建后路由会切换到编辑页，重新读取服务端数据与可绑定媒资。
 watch(
   // 同一编辑组件中的新建与编号路由切换也会触发重新加载。
@@ -80,7 +96,10 @@ watch(
     try {
       categories.value = await listCategories()
       if (id.value) {
-        form.value = await getCourse(id.value)
+        const course = await getCourse(id.value)
+        form.value = course
+        courseStatus.value = course.status
+        courseAuditStatus.value = course.auditStatus
         await refreshPlans()
         mediaPage.value = 1
         await refreshMedia()
@@ -93,11 +112,14 @@ watch(
 )
 // 先校验名称，再保存完整表单；新建成功后切换到实际课程编号对应的编辑页。
 async function save() {
+  if (!canEdit.value) return
   if (!form.value.name.trim()) return ElMessage.warning('请填写课程名称')
   saving.value = true
   try {
     const result = await saveCourse(form.value)
     form.value = result
+    courseStatus.value = result.status
+    courseAuditStatus.value = result.auditStatus
     ElMessage.success('课程信息已保存')
     if (!id.value) router.replace(`/courses/${result.id}`)
   } catch (error) {
@@ -113,6 +135,7 @@ async function addPlan() {
     await addTeachplan(id.value, planName.value.trim(), planParent.value)
     planName.value = ''
     await refreshPlans()
+    await refreshCourseStatus()
     ElMessage.success('教学计划已保存')
   } catch (error) {
     ElMessage.error((error as Error).message)
@@ -126,6 +149,7 @@ async function bind() {
   try {
     await bindMedia(bindPlanId.value, item)
     await refreshPlans()
+    await refreshCourseStatus()
     ElMessage.success('媒资已绑定')
     selectedMedia.value = ''
     bindPlanId.value = null
@@ -143,8 +167,49 @@ async function rename(plan: Teachplan) {
     })
     await addTeachplan(id.value, result.value.trim(), plan.parentid || 0, plan.id)
     await refreshPlans()
+    await refreshCourseStatus()
   } catch (error) {
     if (error instanceof Error) ElMessage.error(error.message)
+  }
+}
+
+// 删除前明确说明章会连同所有小节及关联一起删除；取消时保持页面原状。
+async function removePlan(plan: Teachplan) {
+  try {
+    await ElMessageBox.confirm(
+      plan.grade === 1
+        ? `删除章节“${plan.pname}”及其全部小节？媒资文件会保留。`
+        : `删除小节“${plan.pname}”及其媒资绑定？媒资文件会保留。`,
+      '删除教学计划',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  planActionId.value = plan.id
+  try {
+    await deleteTeachplan(plan.id)
+    await refreshPlans()
+    await refreshCourseStatus()
+    ElMessage.success('教学计划已删除')
+  } catch (error) {
+    ElMessage.error((error as Error).message)
+  } finally {
+    planActionId.value = null
+  }
+}
+
+// 每次移动后重新读取服务端顺序，界面索引不自行推测排序结果。
+async function movePlan(plan: Teachplan, direction: 'up' | 'down') {
+  planActionId.value = plan.id
+  try {
+    await moveTeachplan(plan.id, direction)
+    await refreshPlans()
+    await refreshCourseStatus()
+  } catch (error) {
+    ElMessage.error((error as Error).message)
+  } finally {
+    planActionId.value = null
   }
 }
 // 上传只更新表单中的封面地址，点击保存后才写入课程信息。
@@ -213,9 +278,24 @@ const flatPlans = computed(() => plans.value.flatMap((p) => [p, ...(p.teachPlanT
           <h2>课程基本信息</h2>
           <p>清晰的课程介绍，能帮助学员更快找到适合自己的学习内容。</p>
         </div>
+        <div
+          v-if="!canEdit"
+          class="notice-strip"
+        >
+          {{
+            courseStatus === '30502' ? '课程已发布，请先下架再编辑。' : '课程审核中，暂不能编辑。'
+          }}
+        </div>
+        <div
+          v-else-if="courseAuditStatus === '30404'"
+          class="notice-strip"
+        >
+          修改课程会撤销审核通过状态，保存后需重新提交审核。
+        </div>
         <el-form
           :model="form"
           label-position="top"
+          :disabled="!canEdit"
         >
           <div class="form-grid">
             <el-form-item
@@ -314,6 +394,7 @@ const flatPlans = computed(() => plans.value.flatMap((p) => [p, ...(p.teachPlanT
                   type="file"
                   accept="image/*"
                   aria-label="上传课程封面"
+                  :disabled="!canEdit"
                   @change="cover"
                 />
                 <p>选择图片上传后，请保存课程。</p>
@@ -376,6 +457,7 @@ const flatPlans = computed(() => plans.value.flatMap((p) => [p, ...(p.teachPlanT
           <el-button
             type="primary"
             :loading="saving"
+            :disabled="!canEdit"
             @click="save"
           >
             保存课程
@@ -389,6 +471,16 @@ const flatPlans = computed(() => plans.value.flatMap((p) => [p, ...(p.teachPlanT
         <div class="form-intro">
           <h2>教学计划</h2>
           <p>用章节和小节组织学习内容，让进度一目了然。</p>
+        </div>
+        <div
+          v-if="!canEdit"
+          class="notice-strip"
+        >
+          {{
+            courseStatus === '30502'
+              ? '课程已发布，请先下架再修改教学计划。'
+              : '课程审核中，暂不能修改教学计划。'
+          }}
         </div>
         <div class="plan-add">
           <el-select
@@ -413,6 +505,7 @@ const flatPlans = computed(() => plans.value.flatMap((p) => [p, ...(p.teachPlanT
           />
           <el-button
             type="primary"
+            :disabled="!canEdit"
             @click="addPlan"
           >
             添加
@@ -429,13 +522,36 @@ const flatPlans = computed(() => plans.value.flatMap((p) => [p, ...(p.teachPlanT
               <strong>{{ plan.pname }}</strong>
               <el-button
                 link
+                :disabled="!canEdit || planActionId !== null"
                 @click="rename(plan)"
               >
                 改名
               </el-button>
+              <el-button
+                link
+                :disabled="index === 0 || !canEdit || planActionId !== null"
+                @click="movePlan(plan, 'up')"
+              >
+                上移
+              </el-button>
+              <el-button
+                link
+                :disabled="index === plans.length - 1 || !canEdit || planActionId !== null"
+                @click="movePlan(plan, 'down')"
+              >
+                下移
+              </el-button>
+              <el-button
+                link
+                type="danger"
+                :disabled="!canEdit || planActionId !== null"
+                @click="removePlan(plan)"
+              >
+                删除
+              </el-button>
             </div>
             <div
-              v-for="child in plan.teachPlanTreeNodes || []"
+              v-for="(child, childIndex) in plan.teachPlanTreeNodes || []"
               :key="child.id"
               class="plan-child"
             >
@@ -444,9 +560,36 @@ const flatPlans = computed(() => plans.value.flatMap((p) => [p, ...(p.teachPlanT
               <small v-if="child.teachplanMedia">· {{ child.teachplanMedia.mediaFilename }}</small>
               <el-button
                 link
+                :disabled="!canEdit || planActionId !== null"
                 @click="rename(child)"
               >
                 改名
+              </el-button>
+              <el-button
+                link
+                :disabled="childIndex === 0 || !canEdit || planActionId !== null"
+                @click="movePlan(child, 'up')"
+              >
+                上移
+              </el-button>
+              <el-button
+                link
+                :disabled="
+                  childIndex === (plan.teachPlanTreeNodes || []).length - 1 ||
+                  !canEdit ||
+                  planActionId !== null
+                "
+                @click="movePlan(child, 'down')"
+              >
+                下移
+              </el-button>
+              <el-button
+                link
+                type="danger"
+                :disabled="!canEdit || planActionId !== null"
+                @click="removePlan(child)"
+              >
+                删除
               </el-button>
             </div>
           </div>
@@ -492,6 +635,7 @@ const flatPlans = computed(() => plans.value.flatMap((p) => [p, ...(p.teachPlanT
           </el-select>
           <el-button
             type="primary"
+            :disabled="!canEdit"
             @click="bind"
           >
             绑定
@@ -504,9 +648,7 @@ const flatPlans = computed(() => plans.value.flatMap((p) => [p, ...(p.teachPlanT
           layout="total, prev, pager, next"
           @current-change="refreshMedia"
         />
-        <div class="notice-strip">
-          媒资存在性、机构归属和转码完成状态须由后端校验；目前该接口尚未完成这些检查。
-        </div>
+        <div class="notice-strip">绑定前会核对媒资归属及处理状态；视频转码完成后才能绑定。</div>
       </div>
     </div>
     <!-- 侧栏提示当前编辑阶段及课程完善要点。 -->

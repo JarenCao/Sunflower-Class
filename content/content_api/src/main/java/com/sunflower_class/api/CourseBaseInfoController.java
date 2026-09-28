@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -23,7 +24,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 机构端课程基础信息接口，提供分页、创建、详情和修改入口。
+ * 机构端课程基础信息接口，提供分页、创建、详情、修改及删除入口。
  */
 @CrossOrigin(origins = "*")
 @RestController
@@ -78,5 +79,14 @@ public class CourseBaseInfoController {
         @RequestBody @Validated EditCourseDto editCourseDto
     ) {
         return courseBaseInfoService.updateCourseBaseInfo(companyId, editCourseDto);
+    }
+
+    /**
+     * 删除本机构未发布或已下架课程；已发布课程必须先下架。
+     */
+    @Operation(summary = "删除课程", description = "删除本机构未发布或已下架的课程及其关联记录")
+    @DeleteMapping("/course/{id}")
+    public void deleteCourse(@PathVariable Long id) {
+        courseBaseInfoService.deleteCourse(companyId, id);
     }
 }

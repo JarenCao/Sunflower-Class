@@ -399,8 +399,11 @@ a {
   grid-template-columns: repeat(3, 1fr);
   gap: 22px;
 }
+/* 首页与全部课程共用固定高度卡片，长介绍独立滚动，价格保持在底部。 */
 .course-card {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  height: 452px;
   background: #fff;
   border: 1px solid #eeeae2;
   border-radius: 15px;
@@ -416,6 +419,7 @@ a {
 }
 .course-cover {
   height: 190px;
+  flex: 0 0 190px;
   position: relative;
   display: grid;
   place-items: center;
@@ -471,6 +475,10 @@ a {
   font-size: 11px;
 }
 .course-info {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
   padding: 20px;
 }
 .course-level {
@@ -482,19 +490,28 @@ a {
   padding: 0 5px;
 }
 .course-info h3 {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   font-size: 18px;
   margin: 12px 0 8px;
   line-height: 1.4;
 }
 .course-info p {
+  flex: 1;
   font-size: 12px;
   color: #84908e;
   line-height: 1.7;
-  min-height: 41px;
+  min-height: 0;
   margin: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .card-bottom {
   display: flex;
+  flex-shrink: 0;
   align-items: end;
   justify-content: space-between;
   border-top: 1px solid #f1eee8;

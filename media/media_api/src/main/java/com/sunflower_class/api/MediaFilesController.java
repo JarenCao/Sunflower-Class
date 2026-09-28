@@ -14,10 +14,13 @@ import com.sunflower_class.model.po.MediaFiles;
 import com.sunflower_class.service.MediaFileService;
 import io.minio.GetPresignedObjectUrlArgs;
 import io.minio.MinioClient;
+import io.minio.StatObjectArgs;
+import io.minio.errors.ErrorResponseException;
 import io.minio.http.Method;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.net.URI;
+import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
@@ -66,6 +69,44 @@ public class MediaFilesController {
                 .build()
         );
         return ResponseEntity.status(302).location(URI.create(url)).build();
+    }
+
+    /** 核对机构、处理状态及可用对象，向内容服务返回不含存储路径的元数据。 */
+    @GetMapping("/files/{id}/binding-info")
+    public ResponseEntity<Map<String, Object>> bindingInfo(@PathVariable String id)
+        throws Exception {
+        MediaFiles file = mediaFilesMapper.selectById(id);
+        if (file == null || !companyId.equals(file.getCompanyId())) {
+            return ResponseEntity.notFound().build();
+        }
+        // 已标记处理完成的记录还要确认对象仍在存储中，避免只凭数据库状态绑定失效文件。
+        if (PROCESS_READY.equals(file.getStatus())) {
+            if (file.getBucket() == null || file.getFilePath() == null) {
+                return ResponseEntity.notFound().build();
+            }
+            try {
+                minioClient.statObject(
+                    StatObjectArgs.builder()
+                        .bucket(file.getBucket())
+                        .object(file.getFilePath())
+                        .build()
+                );
+            } catch (ErrorResponseException missingObject) {
+                return ResponseEntity.notFound().build();
+            }
+        }
+        return ResponseEntity.ok(
+            Map.of(
+                "id",
+                file.getId(),
+                "companyId",
+                file.getCompanyId(),
+                "filename",
+                file.getFilename(),
+                "status",
+                file.getStatus() == null ? "" : file.getStatus()
+            )
+        );
     }
 
     /**

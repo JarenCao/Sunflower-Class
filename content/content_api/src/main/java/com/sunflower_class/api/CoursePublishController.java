@@ -17,11 +17,12 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 课程提交审核与发布入口，同时向学员端提供已发布快照的只读查询。
+ * 课程提交审核、发布及下架入口，同时向学员端提供已发布快照的只读查询。
  */
 @Tag(name = "课程发布", description = "课程发布相关接口")
 @RestController
@@ -88,6 +89,16 @@ public class CoursePublishController {
     @PostMapping("/coursepublish/{courseId}")
     public RestResponse coursepublish(@PathVariable("courseId") Long courseId) {
         coursePublishService.publishCourse(companyId, courseId);
+        return RestResponse.success();
+    }
+
+    /**
+     * 下架本机构已发布课程，使学员端公开查询立即不再返回该课程。
+     */
+    @Operation(summary = "下架课程", description = "已发布课程须先下架，之后才能删除")
+    @PutMapping("/coursepublish/{courseId}/offline")
+    public RestResponse offlineCourse(@PathVariable Long courseId) {
+        coursePublishService.offlineCourse(companyId, courseId);
         return RestResponse.success();
     }
 }

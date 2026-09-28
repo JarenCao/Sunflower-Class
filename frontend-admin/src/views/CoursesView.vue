@@ -1,9 +1,9 @@
-<!-- 课程管理：按名称分页查询课程，展示封面与状态，提供编辑、提审和发布操作。 -->
+<!-- 课程管理：分页查询课程，提供编辑、提审、发布、下架及二次确认删除。 -->
 <script setup lang="ts">
 import { PAGE_SIZE } from '../api'
 import { onMounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
-import { listCourses, submitAudit, publishCourse } from '../api'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { deleteCourse, listCourses, offlineCourse, submitAudit, publishCourse } from '../api'
 import type { Course } from '../types'
 
 const rows = ref<Course[]>([])
@@ -11,6 +11,7 @@ const page = ref(1)
 const count = ref(0)
 const search = ref('')
 const loading = ref(false)
+const actionId = ref<number | null>(null)
 // 搜索条件变化后从第一页重新查询。
 function searchFromFirstPage() {
   page.value = 1
@@ -48,6 +49,55 @@ async function publish(id: number) {
     await refresh()
   } catch (error) {
     ElMessage.error((error as Error).message)
+  }
+}
+// 二次确认下架，成功后重新读取服务端发布状态。
+async function offline(id: number) {
+  try {
+    await ElMessageBox.confirm('下架后学员端将不再显示这门课程。确定下架吗？', '下架课程', {
+      type: 'warning',
+      confirmButtonText: '确定下架',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
+  actionId.value = id
+  try {
+    await offlineCourse(id)
+    ElMessage.success('课程已下架')
+    await refresh()
+  } catch (error) {
+    ElMessage.error((error as Error).message)
+  } finally {
+    actionId.value = null
+  }
+}
+// 二次确认删除；如果当前页删空，则回到上一页再重新查询。
+async function remove(id: number) {
+  try {
+    await ElMessageBox.confirm(
+      '删除后课程与教学计划无法恢复，媒资文件会保留。确定删除吗？',
+      '删除课程',
+      {
+        type: 'warning',
+        confirmButtonText: '确定删除',
+        cancelButtonText: '取消',
+      },
+    )
+  } catch {
+    return
+  }
+  actionId.value = id
+  try {
+    await deleteCourse(id)
+    ElMessage.success('课程已删除')
+    if (rows.value.length === 1 && page.value > 1) page.value -= 1
+    await refresh()
+  } catch (error) {
+    ElMessage.error((error as Error).message)
+  } finally {
+    actionId.value = null
   }
 }
 // 首次挂载即读取第一页；后续翻页与搜索复用 refresh。
@@ -193,7 +243,7 @@ const auditLabel = (s: string) =>
       </el-table-column>
       <el-table-column
         label="操作"
-        width="236"
+        width="320"
       >
         <template #default="{ row }">
           <!-- 按审核与发布状态展示操作入口，执行时仍由后端判断是否允许。 -->
@@ -205,7 +255,10 @@ const auditLabel = (s: string) =>
               编辑与编排
             </RouterLink>
             <el-button
-              v-if="['30401', '30402'].includes(row.auditStatus)"
+              v-if="
+                ['30401', '30402'].includes(row.auditStatus) &&
+                ['30501', '30503'].includes(row.status)
+              "
               plain
               type="primary"
               size="small"
@@ -214,13 +267,33 @@ const auditLabel = (s: string) =>
               提交审核
             </el-button>
             <el-button
-              v-if="row.auditStatus === '30404' && row.status !== '30502'"
+              v-if="row.auditStatus === '30404' && ['30501', '30503'].includes(row.status)"
               plain
               type="primary"
               size="small"
               @click="publish(row.id)"
             >
               发布课程
+            </el-button>
+            <el-button
+              v-if="row.status === '30502'"
+              plain
+              type="warning"
+              size="small"
+              :disabled="actionId !== null"
+              @click="offline(row.id)"
+            >
+              下架
+            </el-button>
+            <el-button
+              v-else-if="['30501', '30503'].includes(row.status)"
+              plain
+              type="danger"
+              size="small"
+              :disabled="actionId !== null"
+              @click="remove(row.id)"
+            >
+              删除
             </el-button>
           </div>
         </template>
@@ -240,8 +313,8 @@ const auditLabel = (s: string) =>
   <div class="notice-strip">
     <span>✦</span>
     <div>
-      <strong>课程删除与审核结果</strong>
-      将在对应后端接口完成后接入。此处读取和保存真实数据库数据。
+      <strong>课程删除说明</strong>
+      已发布课程须先下架。删除会清理课程与教学计划，媒资文件仍保留在媒资中心。
     </div>
   </div>
 </template>

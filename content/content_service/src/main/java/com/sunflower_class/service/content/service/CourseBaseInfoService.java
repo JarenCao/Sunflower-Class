@@ -9,7 +9,7 @@ import com.sunflower_class.model.dto.QueryCourseParamsDto;
 import com.sunflower_class.model.po.CourseBase;
 
 /**
- * 课程基础与营销信息的查询、新建和修改业务契约。
+ * 课程基础与营销信息的查询、新建、修改及事务删除业务契约。
  */
 public interface CourseBaseInfoService {
     /**
@@ -38,4 +38,9 @@ public interface CourseBaseInfoService {
      * 校验编辑表单并使用机构编号更新课程，返回更新后的基础和营销信息。
      */
     CourseBaseInfoDto updateCourseBaseInfo(Long companyId, EditCourseDto editCourseDto);
+
+    /**
+     * 校验机构归属和发布状态，在同一事务内删除课程及其关联数据。
+     */
+    void deleteCourse(Long companyId, Long courseId);
 }

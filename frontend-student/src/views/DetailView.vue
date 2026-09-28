@@ -7,12 +7,16 @@ import type { Course } from '../data'
 const route = useRoute()
 const course = ref<Course>()
 const notice = ref(false)
+const loading = ref(true)
 // 根据网址中的课程编号读取发布详情，失败时清空旧课程展示。
 async function load() {
+  loading.value = true
   try {
     course.value = await getCourse(Number(route.params.id))
   } catch {
     course.value = undefined
+  } finally {
+    loading.value = false
   }
 }
 // 首次进入页面读取课程；之后同组件内切换课程由下方监听器处理。
@@ -123,6 +127,8 @@ watch(() => route.params.id, load)
     v-else
     class="container empty-message"
   >
-    课程不存在，或发布课程接口尚未可用。
+    {{
+      loading ? '正在加载课程…' : '课程暂不可访问，可能已下架或删除，请返回课程列表查看其他课程。'
+    }}
   </div>
 </template>

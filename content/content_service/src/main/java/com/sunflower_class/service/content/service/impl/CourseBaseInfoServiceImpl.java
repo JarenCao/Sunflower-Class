@@ -15,9 +15,18 @@ import com.sunflower_class.model.dto.QueryCourseParamsDto;
 import com.sunflower_class.model.po.CourseBase;
 import com.sunflower_class.model.po.CourseCategory;
 import com.sunflower_class.model.po.CourseMarket;
+import com.sunflower_class.model.po.CoursePublish;
+import com.sunflower_class.model.po.CourseTeacher;
+import com.sunflower_class.model.po.Teachplan;
+import com.sunflower_class.model.po.TeachplanMedia;
 import com.sunflower_class.service.content.mapper.CourseBaseMapper;
 import com.sunflower_class.service.content.mapper.CourseCategoryMapper;
 import com.sunflower_class.service.content.mapper.CourseMarketMapper;
+import com.sunflower_class.service.content.mapper.CoursePublishMapper;
+import com.sunflower_class.service.content.mapper.CoursePublishPreMapper;
+import com.sunflower_class.service.content.mapper.CourseTeacherMapper;
+import com.sunflower_class.service.content.mapper.TeachplanMapper;
+import com.sunflower_class.service.content.mapper.TeachplanMediaMapper;
 import com.sunflower_class.service.content.service.CourseBaseInfoService;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -48,6 +57,21 @@ public class CourseBaseInfoServiceImpl implements CourseBaseInfoService {
 
     @Autowired
     private CourseCategoryMapper categoryMapper;
+
+    @Autowired
+    private CoursePublishMapper coursePublishMapper;
+
+    @Autowired
+    private CoursePublishPreMapper coursePublishPreMapper;
+
+    @Autowired
+    private CourseTeacherMapper courseTeacherMapper;
+
+    @Autowired
+    private TeachplanMapper teachplanMapper;
+
+    @Autowired
+    private TeachplanMediaMapper teachplanMediaMapper;
 
     /**
      * 保存或更新课程营销信息
@@ -380,8 +404,10 @@ public class CourseBaseInfoServiceImpl implements CourseBaseInfoService {
 
         Long id = editCourseDto.getId();
 
-        // 验证课程是否存在
-        CourseBase existingCourse = courseBaseMapper.selectById(id);
+        // 锁定课程，避免编辑与提审、发布交错提交。
+        CourseBase existingCourse = courseBaseMapper.selectOne(
+            new LambdaQueryWrapper<CourseBase>().eq(CourseBase::getId, id).last("FOR UPDATE")
+        );
         if (existingCourse == null) {
             log.error("课程不存在，课程ID：{}", id);
             GlobalException.cast("课程不存在，ID：" + id);
@@ -396,6 +422,18 @@ public class CourseBaseInfoServiceImpl implements CourseBaseInfoService {
             );
             GlobalException.cast("不能修改非本机构课程");
         }
+        if (COURSE_PUBLISHED.equals(existingCourse.getStatus())) {
+            GlobalException.cast("已发布课程请先下架再编辑");
+        }
+        if (
+            !COURSE_DRAFT.equals(existingCourse.getStatus()) &&
+            !COURSE_OFFLINE.equals(existingCourse.getStatus())
+        ) {
+            GlobalException.cast("课程发布状态异常，暂不能编辑");
+        }
+        if (AUDIT_PENDING.equals(existingCourse.getAuditStatus())) {
+            GlobalException.cast("审核中的课程不能编辑");
+        }
 
         // 校验更新数据
         validateCourseInfo(editCourseDto);
@@ -405,8 +443,9 @@ public class CourseBaseInfoServiceImpl implements CourseBaseInfoService {
         BeanUtils.copyProperties(editCourseDto, courseBase);
         courseBase.setId(id);
         courseBase.setChangeDate(LocalDateTime.now());
-        // 保持审核状态和发布状态不变
-        courseBase.setAuditStatus(existingCourse.getAuditStatus());
+        // 内容变化会使旧审核结论失效；发布状态始终由发布/下架流程维护。
+        boolean resetApproval = AUDIT_APPROVED.equals(existingCourse.getAuditStatus());
+        courseBase.setAuditStatus(resetApproval ? AUDIT_DRAFT : existingCourse.getAuditStatus());
         courseBase.setStatus(existingCourse.getStatus());
 
         int updateResult = courseBaseMapper.updateById(courseBase);
@@ -418,11 +457,72 @@ public class CourseBaseInfoServiceImpl implements CourseBaseInfoService {
 
         // 保存或更新营销信息
         CourseMarket courseMarket = saveOrUpdateCourseMarket(id, editCourseDto);
+        if (resetApproval) {
+            coursePublishPreMapper.deleteById(id);
+        }
 
         // 构建返回结果
         CourseBaseInfoDto resultDto = buildResultDto(courseBase, courseMarket);
 
         log.info("课程更新成功，课程ID：{}，课程名称：{}", id, resultDto.getName());
         return resultDto;
+    }
+
+    /**
+     * 锁定课程并校验机构及发布状态，再按关联关系从子表到主表删除。
+     * 仅解除媒资绑定，不删除可能被其他课程复用的媒资文件。
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteCourse(Long companyId, Long courseId) {
+        if (companyId == null || courseId == null || courseId <= 0) {
+            GlobalException.cast("课程或机构编号无效");
+        }
+
+        // 行锁防止同一课程被两个删除请求同时处理。
+        CourseBase course = courseBaseMapper.selectOne(
+            new LambdaQueryWrapper<CourseBase>().eq(CourseBase::getId, courseId).last("FOR UPDATE")
+        );
+        if (course == null) {
+            GlobalException.cast("课程不存在");
+        }
+        if (!companyId.equals(course.getCompanyId())) {
+            GlobalException.cast("不能删除非本机构课程");
+        }
+        if (COURSE_PUBLISHED.equals(course.getStatus())) {
+            GlobalException.cast("已发布课程请先下架再删除");
+        }
+        if (
+            !COURSE_DRAFT.equals(course.getStatus()) && !COURSE_OFFLINE.equals(course.getStatus())
+        ) {
+            GlobalException.cast("课程发布状态异常，暂不能删除");
+        }
+
+        // 同时检查公开快照，避免基础状态异常时误删仍对学员可见的课程。
+        CoursePublish published = coursePublishMapper.selectById(courseId);
+        if (published != null && COURSE_PUBLISHED.equals(published.getStatus())) {
+            GlobalException.cast("已发布课程请先下架再删除");
+        }
+
+        // 删除课程范围内的关系记录；媒资文件本身由媒资服务管理，不能在此删除。
+        teachplanMediaMapper.delete(
+            new LambdaQueryWrapper<TeachplanMedia>().eq(TeachplanMedia::getCourseId, courseId)
+        );
+        courseBaseMapper.deleteTeachplanWork(courseId);
+        teachplanMapper.delete(
+            new LambdaQueryWrapper<Teachplan>().eq(Teachplan::getCourseId, courseId)
+        );
+        courseTeacherMapper.delete(
+            new LambdaQueryWrapper<CourseTeacher>().eq(CourseTeacher::getCourseId, courseId)
+        );
+        courseBaseMapper.deleteCourseAudit(courseId);
+        coursePublishPreMapper.deleteById(courseId);
+        coursePublishMapper.deleteById(courseId);
+        courseMarketMapper.deleteById(courseId);
+
+        if (courseBaseMapper.deleteById(courseId) != 1) {
+            GlobalException.cast("课程删除失败");
+        }
+        log.info("课程及关联记录删除完成，课程ID：{}，机构ID：{}", courseId, companyId);
     }
 }
