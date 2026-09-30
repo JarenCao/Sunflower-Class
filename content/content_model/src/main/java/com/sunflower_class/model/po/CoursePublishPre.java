@@ -1,6 +1,7 @@
 package com.sunflower_class.model.po;
 
 import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
@@ -97,7 +98,8 @@ public class CoursePublishPre implements Serializable {
     private LocalDateTime createDate;
 
     @Schema(description = "审核时间")
-    @TableField("audit_date")
+    // 重新提审时允许清空上一轮审核时间，避免待审快照残留旧结论。
+    @TableField(value = "audit_date", updateStrategy = FieldStrategy.ALWAYS)
     private LocalDateTime auditDate;
 
     @Schema(description = "审核状态")
@@ -105,7 +107,8 @@ public class CoursePublishPre implements Serializable {
     private String status;
 
     @Schema(description = "备注")
-    @TableField("remark")
+    // 重新提审时同步清空上一轮审核意见；历史仍保存在 course_audit。
+    @TableField(value = "remark", updateStrategy = FieldStrategy.ALWAYS)
     private String remark;
 
     @Schema(description = "收费类型", example = "30202")

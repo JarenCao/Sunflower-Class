@@ -7,8 +7,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-import lombok.extern.slf4j.Slf4j;
+
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+
+import com.sunflower_class.base.config.FFmpegConfig;
+
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 协调 Windows、WSL 和 Docker 的视频转码工具，负责文件搬运、进程执行和临时文件清理。
@@ -17,16 +22,14 @@ import org.springframework.stereotype.Component;
 @Component
 public class FfmpegUtils {
 
-    @org.springframework.beans.factory.annotation.Autowired
-    private com.sunflower_class.base.config.FFmpegConfig config;
+    @Autowired
+    private FFmpegConfig config;
 
     /**
      * 将本地视频复制到 WSL，调用 Docker 中的 FFmpeg 转码并取回输出；成功返回 true，失败返回 false。
      */
     public boolean executeTranscode(String inputPath, String outputPath) {
-        if (
-            inputPath == null || inputPath.isEmpty() || outputPath == null || outputPath.isEmpty()
-        ) {
+        if (inputPath == null || inputPath.isEmpty() || outputPath == null || outputPath.isEmpty()) {
             log.error("输入或输出路径为空");
             return false;
         }
@@ -86,10 +89,8 @@ public class FfmpegUtils {
             Process process = processBuilder.start();
 
             try (
-                BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(process.getInputStream())
-                )
-            ) {
+                    BufferedReader reader = new BufferedReader(
+                            new InputStreamReader(process.getInputStream()))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     log.info("FFmpeg: {}", line);
@@ -134,12 +135,12 @@ public class FfmpegUtils {
     private void ensureWslWorkDir() {
         try {
             String[] cmd = {
-                "wsl",
-                "-d",
-                config.getWslDistro(),
-                "mkdir",
-                "-p",
-                config.getHostDataDir(),
+                    "wsl",
+                    "-d",
+                    config.getWslDistro(),
+                    "mkdir",
+                    "-p",
+                    config.getHostDataDir(),
             };
             Process p = new ProcessBuilder(cmd).start();
             p.waitFor(10, TimeUnit.SECONDS);
@@ -173,10 +174,8 @@ public class FfmpegUtils {
             Process process = pb.start();
 
             try (
-                BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(process.getInputStream())
-                )
-            ) {
+                    BufferedReader reader = new BufferedReader(
+                            new InputStreamReader(process.getInputStream()))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     log.warn("copyToWsl: {}", line);
@@ -221,10 +220,8 @@ public class FfmpegUtils {
             Process process = pb.start();
 
             try (
-                BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(process.getInputStream())
-                )
-            ) {
+                    BufferedReader reader = new BufferedReader(
+                            new InputStreamReader(process.getInputStream()))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     log.warn("copyFromWsl: {}", line);
@@ -257,13 +254,13 @@ public class FfmpegUtils {
     private void cleanWslFiles(String inputPath, String outputPath) {
         try {
             String[] cmd = {
-                "wsl",
-                "-d",
-                config.getWslDistro(),
-                "rm",
-                "-f",
-                inputPath,
-                outputPath,
+                    "wsl",
+                    "-d",
+                    config.getWslDistro(),
+                    "rm",
+                    "-f",
+                    inputPath,
+                    outputPath,
             };
             Process p = new ProcessBuilder(cmd).start();
             p.waitFor(10, TimeUnit.SECONDS);

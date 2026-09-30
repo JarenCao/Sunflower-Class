@@ -1,15 +1,5 @@
 package com.sunflower_class.api;
 
-import com.sunflower_class.base.model.PageParams;
-import com.sunflower_class.base.model.PageResult;
-import com.sunflower_class.model.dto.AddCourseDto;
-import com.sunflower_class.model.dto.CourseBaseInfoDto;
-import com.sunflower_class.model.dto.EditCourseDto;
-import com.sunflower_class.model.dto.QueryCourseParamsDto;
-import com.sunflower_class.model.po.CourseBase;
-import com.sunflower_class.service.content.service.CourseBaseInfoService;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.validation.annotation.Validated;
@@ -20,8 +10,18 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import com.sunflower_class.base.model.PageParams;
+import com.sunflower_class.base.model.PageResult;
+import com.sunflower_class.model.dto.AddCourseDto;
+import com.sunflower_class.model.dto.CourseBaseInfoDto;
+import com.sunflower_class.model.dto.EditCourseDto;
+import com.sunflower_class.model.dto.QueryCourseParamsDto;
+import com.sunflower_class.service.content.service.CourseBaseInfoService;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
  * 机构端课程基础信息接口，提供分页、创建、详情、修改及删除入口。
@@ -45,9 +45,8 @@ public class CourseBaseInfoController {
     // PageParams 从请求参数绑定，课程名称及状态等筛选条件从 JSON 请求体读取。
     @PostMapping("/course/list")
     public PageResult<CourseBaseInfoDto> list(
-        PageParams pageParams,
-        @RequestBody QueryCourseParamsDto queryCourseParamsDto
-    ) {
+            PageParams pageParams,
+            @RequestBody QueryCourseParamsDto queryCourseParamsDto) {
         return courseBaseInfoService.queryCourseBasePage(pageParams, queryCourseParamsDto);
     }
 
@@ -61,7 +60,7 @@ public class CourseBaseInfoController {
     }
 
     /**
-     * 按课程编号读取编辑详情；基础或营销记录缺失时由服务层抛出业务异常。
+     * 按课程编号读取编辑详情；旧课程缺少营销记录时由服务层补展示默认值。
      */
     @Operation(summary = "查询课程", description = "查询课程基本信息")
     @GetMapping("/course/{id}")
@@ -76,8 +75,7 @@ public class CourseBaseInfoController {
     // 先执行 DTO 参数校验，再由服务层比较配置机构编号与课程归属。
     @PutMapping("/course")
     public CourseBaseInfoDto updateCourseBaseInfo(
-        @RequestBody @Validated EditCourseDto editCourseDto
-    ) {
+            @RequestBody @Validated EditCourseDto editCourseDto) {
         return courseBaseInfoService.updateCourseBaseInfo(companyId, editCourseDto);
     }
 

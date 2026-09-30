@@ -4,6 +4,7 @@ import SparkMD5 from 'spark-md5'
 import type {
   Category,
   Course,
+  CourseAuditRecord,
   CourseInput,
   MediaFile,
   PageResult,
@@ -183,6 +184,18 @@ export async function bindMedia(teachplanId: number, media: MediaFile): Promise<
 // 提交审核只改变审核流程状态，不等同于审核通过或课程发布。
 export async function submitAudit(courseId: number): Promise<void> {
   check((await http.post(`/courseaudit/commit/${courseId}`)).data)
+}
+// 审核结论及意见由真实接口持久化，审核人由服务端配置确定。
+export async function reviewCourse(
+  courseId: number,
+  approved: boolean,
+  reason = '',
+): Promise<void> {
+  check((await http.post(`/courseaudit/review/${courseId}`, { approved, reason })).data)
+}
+// 读取指定课程的历次审核操作记录。
+export async function getAuditHistory(courseId: number): Promise<CourseAuditRecord[]> {
+  return (await http.get(`/courseaudit/history/${courseId}`)).data
 }
 // 请求服务端发布课程；是否允许发布由后端审核状态校验决定。
 export async function publishCourse(courseId: number): Promise<void> {

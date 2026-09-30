@@ -332,14 +332,16 @@ public class CourseBaseInfoServiceImpl implements CourseBaseInfoService {
             }
         );
 
-        // 查询课程营销信息
-        CourseMarket courseMarket = Optional.ofNullable(
-            courseMarketMapper.selectById(id)
-        ).orElseThrow(() -> {
-            log.error("课程营销信息不存在，课程ID：{}", id);
-            GlobalException.cast("课程营销信息不存在");
-            return null;
-        });
+        // 旧测试课程可能没有营销记录；提供可编辑的免费课程默认值，保存时再补齐记录。
+        CourseMarket courseMarket = courseMarketMapper.selectById(id);
+        if (courseMarket == null) {
+            log.warn("课程缺少营销信息，使用默认值展示，课程ID：{}", id);
+            courseMarket = new CourseMarket();
+            courseMarket.setId(id);
+            courseMarket.setCharge(CHARGE_FREE);
+            courseMarket.setPrice(java.math.BigDecimal.ZERO);
+            courseMarket.setOriginalPrice(java.math.BigDecimal.ZERO);
+        }
 
         // 构建返回结果
         CourseBaseInfoDto resultDto = buildResultDto(courseBase, courseMarket);

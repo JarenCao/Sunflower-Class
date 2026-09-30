@@ -16,11 +16,17 @@ import com.sunflower_class.service.content.mapper.CourseBaseMapper;
 import com.sunflower_class.service.content.mapper.CourseMarketMapper;
 import com.sunflower_class.service.content.mapper.CoursePublishMapper;
 import com.sunflower_class.service.content.mapper.CoursePublishPreMapper;
+import com.sunflower_class.service.content.mapper.MqMessageMapper;
+import com.sunflower_class.service.content.service.AssociationMediaService;
 import com.sunflower_class.service.content.service.CourseBaseInfoService;
 import com.sunflower_class.service.content.service.CoursePublishService;
 import com.sunflower_class.service.content.service.TeachPlanService;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,7 +34,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 维护审核快照及正式发布快照；发布消息持久化入口目前仍待实现。
+ * 维护审核快照和正式发布快照；正式发布时在同一事务保存待发送消息。
  */
 @Slf4j
 @Service
@@ -51,6 +57,12 @@ public class CoursePublishServiceImpl implements CoursePublishService {
 
     @Autowired
     private CoursePublishMapper coursePublishMapper;
+
+    @Autowired
+    private MqMessageMapper mqMessageMapper;
+
+    @Autowired
+    private AssociationMediaService associationMediaService;
 
     /**
      * 校验机构归属、当前审核状态、教学计划及营销信息，生成待审核快照并更新审核状态。
@@ -167,9 +179,86 @@ public class CoursePublishServiceImpl implements CoursePublishService {
         );
     }
 
-    /**
-     * 校验预发布快照的机构归属和审核通过状态，保存正式快照、更新发布状态并删除预发布记录。
-     */
+    /** 锁定课程并核对待审快照，同一事务保存审核结论与操作记录。 */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void reviewCourse(
+        Long companyId,
+        Long courseId,
+        boolean approved,
+        String reason,
+        String reviewer
+    ) {
+        if (companyId == null || courseId == null || courseId <= 0) {
+            GlobalException.cast("课程或机构编号无效");
+        }
+        String opinion = reason == null ? "" : reason.trim();
+        String operator = reviewer == null ? "" : reviewer.trim();
+        if (!approved && opinion.isBlank()) {
+            GlobalException.cast("驳回课程时必须填写原因");
+        }
+        if (opinion.length() > 255 || operator.isBlank() || operator.length() > 50) {
+            GlobalException.cast("审核意见或审核人长度无效");
+        }
+
+        CourseBase course = courseBaseMapper.selectOne(
+            new LambdaQueryWrapper<CourseBase>().eq(CourseBase::getId, courseId).last("FOR UPDATE")
+        );
+        if (course == null) GlobalException.cast("课程不存在");
+        if (!companyId.equals(course.getCompanyId())) GlobalException.cast("不能审核非本机构课程");
+        if (!AUDIT_PENDING.equals(course.getAuditStatus())) {
+            GlobalException.cast("只有审核中的课程可以审核");
+        }
+        if (
+            !COURSE_DRAFT.equals(course.getStatus()) && !COURSE_OFFLINE.equals(course.getStatus())
+        ) {
+            GlobalException.cast("已发布课程不能重新审核");
+        }
+
+        CoursePublishPre pending = coursePublishPreMapper.selectById(courseId);
+        if (
+            pending == null ||
+            !companyId.equals(pending.getCompanyId()) ||
+            !AUDIT_PENDING.equals(pending.getStatus())
+        ) {
+            GlobalException.cast("课程待审快照不存在或状态不一致");
+        }
+
+        String result = approved ? AUDIT_APPROVED : AUDIT_REJECTED;
+        LocalDateTime reviewedAt = LocalDateTime.now();
+        pending.setStatus(result);
+        pending.setAuditDate(reviewedAt);
+        pending.setRemark(opinion.isBlank() ? null : opinion);
+        if (coursePublishPreMapper.updateById(pending) != 1) {
+            GlobalException.cast("课程审核快照更新失败");
+        }
+        course.setAuditStatus(result);
+        course.setChangeDate(reviewedAt);
+        if (courseBaseMapper.updateById(course) != 1) {
+            GlobalException.cast("课程审核状态更新失败");
+        }
+        if (
+            courseBaseMapper.insertCourseAudit(courseId, opinion, result, operator, reviewedAt) != 1
+        ) {
+            GlobalException.cast("课程审核记录保存失败");
+        }
+        log.info("课程审核完成，课程ID：{}，审核状态：{}，审核人：{}", courseId, result, operator);
+    }
+
+    /** 仅允许读取配置机构所属课程的审核历史。 */
+    @Override
+    public List<Map<String, Object>> auditHistory(Long companyId, Long courseId) {
+        if (companyId == null || courseId == null || courseId <= 0) {
+            GlobalException.cast("课程或机构编号无效");
+        }
+        CourseBase course = courseBaseMapper.selectById(courseId);
+        if (course == null || !companyId.equals(course.getCompanyId())) {
+            GlobalException.cast("课程不存在或无权限查看审核记录");
+        }
+        return courseBaseMapper.selectCourseAuditHistory(courseId);
+    }
+
+    /** 校验课程及审核快照后发布；已成功发布的相同请求直接返回，不重复写入记录。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void publishCourse(Long companyId, Long courseId) {
@@ -185,6 +274,23 @@ public class CoursePublishServiceImpl implements CoursePublishService {
         if (!companyId.equals(courseBase.getCompanyId())) {
             GlobalException.cast("不能发布非本机构课程");
         }
+
+        CoursePublish existingPublish = coursePublishMapper.selectById(courseId);
+        if (existingPublish != null && !companyId.equals(existingPublish.getCompanyId())) {
+            GlobalException.cast("课程发布记录不属于当前机构");
+        }
+        // 课程和正式快照均为已发布时属于重试请求，不能再次插入或更新时间。
+        if (COURSE_PUBLISHED.equals(courseBase.getStatus())) {
+            if (
+                existingPublish == null ||
+                !COURSE_PUBLISHED.equals(existingPublish.getStatus()) ||
+                !AUDIT_APPROVED.equals(courseBase.getAuditStatus())
+            ) {
+                GlobalException.cast("课程发布状态与正式记录不一致");
+            }
+            log.info("课程已发布，跳过重复请求, courseId={}", courseId);
+            return;
+        }
         if (
             !COURSE_DRAFT.equals(courseBase.getStatus()) &&
             !COURSE_OFFLINE.equals(courseBase.getStatus())
@@ -195,10 +301,9 @@ public class CoursePublishServiceImpl implements CoursePublishService {
             GlobalException.cast("课程尚未审核通过");
         }
 
-        CoursePublish existingPublish = coursePublishMapper.selectById(courseId);
         CoursePublishPre coursePublishPre = coursePublishPreMapper.selectById(courseId);
         if (existingPublish != null && COURSE_PUBLISHED.equals(existingPublish.getStatus())) {
-            GlobalException.cast("课程已发布，不能重复发布");
+            GlobalException.cast("课程发布状态与正式记录不一致");
         }
 
         // 下架后未改动内容时，原正式快照仍有效，可直接重新上架。
@@ -211,6 +316,7 @@ public class CoursePublishServiceImpl implements CoursePublishService {
             if (!companyId.equals(existingPublish.getCompanyId())) {
                 GlobalException.cast("不能发布非本机构课程");
             }
+            validatePublishContent(courseBase);
             existingPublish.setStatus(COURSE_PUBLISHED);
             existingPublish.setOnlineDate(LocalDateTime.now());
             existingPublish.setOfflineDate(null);
@@ -250,6 +356,8 @@ public class CoursePublishServiceImpl implements CoursePublishService {
             GlobalException.cast("该课程未通过审核");
         }
 
+        validatePublishContent(courseBase);
+
         CoursePublish coursePublish = new CoursePublish();
         BeanUtils.copyProperties(coursePublishPre, coursePublish);
         coursePublish.setStatus(COURSE_PUBLISHED);
@@ -276,10 +384,93 @@ public class CoursePublishServiceImpl implements CoursePublishService {
         log.info("课程发布完成, courseId={}, companyId={}", courseId, companyId);
     }
 
-    /**
-     * 课程发布消息的预留入口，目前为空实现；调用此方法不会保存消息或触发搜索、缓存同步。
-     */
-    private void saveCoursePublishMessage(Long coureseId) {}
+    /** 按当前数据库内容核对必填字段、营销记录、教学目录及小节媒资，避免发布失效快照。 */
+    private void validatePublishContent(CourseBase course) {
+        if (
+            course.getName() == null ||
+            course.getName().isBlank() ||
+            course.getMt() == null ||
+            course.getMt().isBlank() ||
+            course.getSt() == null ||
+            course.getSt().isBlank() ||
+            course.getGrade() == null ||
+            course.getGrade().isBlank() ||
+            course.getTeachmode() == null ||
+            course.getTeachmode().isBlank() ||
+            course.getUsers() == null ||
+            course.getUsers().isBlank() ||
+            course.getPic() == null ||
+            course.getPic().isBlank()
+        ) {
+            GlobalException.cast("课程基础信息不完整，请先完善课程信息");
+        }
+
+        CourseMarket market = courseMarketMapper.selectById(course.getId());
+        if (
+            market == null ||
+            market.getCharge() == null ||
+            !Set.of(CHARGE_FREE, CHARGE_PAID).contains(market.getCharge())
+        ) {
+            GlobalException.cast("课程营销信息不存在或收费类型无效");
+        }
+        if (
+            CHARGE_PAID.equals(market.getCharge()) &&
+            (market.getPrice() == null || market.getPrice().compareTo(BigDecimal.ZERO) <= 0)
+        ) {
+            GlobalException.cast("收费课程价格必须大于0");
+        }
+
+        List<TeachPlanDto> chapters = teachPlanService.findTeachPlanTree(course.getId());
+        if (chapters == null || chapters.isEmpty()) {
+            GlobalException.cast("课程缺少教学计划");
+        }
+        boolean hasLesson = false;
+        Set<String> checkedMedia = new HashSet<>();
+        for (TeachPlanDto chapter : chapters) {
+            if (chapter.getTeachPlanTreeNodes() == null) continue;
+            for (TeachPlanDto lesson : chapter.getTeachPlanTreeNodes()) {
+                if (lesson.getId() == null) continue;
+                hasLesson = true;
+                String mediaId =
+                    lesson.getTeachplanMedia() == null
+                        ? null
+                        : lesson.getTeachplanMedia().getMediaId();
+                // 视频小节必须绑定媒资；已有绑定的其他小节也不能引用失效文件。
+                if ((mediaId == null || mediaId.isBlank()) && "1".equals(lesson.getMediaType())) {
+                    GlobalException.cast("视频小节“" + lesson.getPname() + "”未关联媒资");
+                }
+                if (mediaId != null && !mediaId.isBlank() && checkedMedia.add(mediaId)) {
+                    associationMediaService.requireReadyMedia(mediaId);
+                }
+            }
+        }
+        if (!hasLesson) GlobalException.cast("教学计划缺少小节");
+    }
+
+    /** 将发布事件写入待发送表；调用方的事务保证快照、状态和消息同时提交。 */
+    private void saveCoursePublishMessage(Long courseId) {
+        CoursePublish published = coursePublishMapper.selectById(courseId);
+        if (published == null || !COURSE_PUBLISHED.equals(published.getStatus())) {
+            GlobalException.cast("课程发布记录不存在，无法保存发布消息");
+        }
+
+        MqMessage message = new MqMessage();
+        message.setMessageType("course_publish");
+        message.setBusinessKey1(courseId.toString());
+        message.setBusinessKey2(published.getCompanyId().toString());
+        message.setBusinessKey3(COURSE_PUBLISHED);
+        message.setExecuteNum(0);
+        message.setState("0");
+        // 各处理阶段均未开始；消息发送及消费由开发清单的下一项负责。
+        message.setStageState1("0");
+        message.setStageState2("0");
+        message.setStageState3("0");
+        message.setStageState4("0");
+        if (mqMessageMapper.insert(message) != 1) {
+            GlobalException.cast("课程发布消息保存失败");
+        }
+        log.info("课程发布消息已落库, courseId={}, messageId={}", courseId, message.getId());
+    }
 
     /**
      * 同一事务更新基础表和公开快照；任一记录异常时保留原发布状态。

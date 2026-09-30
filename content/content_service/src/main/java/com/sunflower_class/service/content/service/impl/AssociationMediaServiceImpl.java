@@ -57,8 +57,9 @@ public class AssociationMediaServiceImpl implements AssociationMediaService {
     @Value("${sunflower.company-id}")
     private Long companyId;
 
-    /** 通过 Nacos 中的 media-api 实例读取文件元数据，服务不可用时拒绝绑定。 */
-    private Map<?, ?> requireReadyMedia(String mediaId) {
+    /** 通过 Nacos 中的 media-api 实例读取文件元数据，服务不可用时拒绝绑定或发布。 */
+    @Override
+    public Map<?, ?> requireReadyMedia(String mediaId) {
         List<ServiceInstance> instances = discoveryClient.getInstances("media-api");
         if (instances.isEmpty()) GlobalException.cast("媒资服务不可用，暂不能绑定");
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();

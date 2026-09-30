@@ -12,12 +12,15 @@ import com.sunflower_class.service.content.mapper.CoursePublishMapper;
 import com.sunflower_class.service.content.service.CoursePublishService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.List;
+import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -30,6 +33,10 @@ public class CoursePublishController {
 
     @Value("${sunflower.company-id}")
     private Long companyId;
+
+    // 开发阶段从服务配置标识审核人；正式身份与角色校验将在认证功能中接入。
+    @Value("${sunflower.reviewer-name:本地审核员}")
+    private String reviewerName;
 
     @Autowired
     private CoursePublishService coursePublishService;
@@ -80,6 +87,35 @@ public class CoursePublishController {
     public RestResponse commitAudit(@PathVariable("courseId") Long courseId) {
         coursePublishService.commitAudit(companyId, courseId);
         return RestResponse.success();
+    }
+
+    /** 请求体只提供审核结论与意见；审核人由服务配置决定，避免由页面伪造。 */
+    public record ReviewDecision(Boolean approved, String reason) {}
+
+    /** 对待审课程作出通过或驳回结论，并保存本次审核记录。 */
+    @Operation(summary = "审核课程", description = "驳回时必须填写原因")
+    @PostMapping("/courseaudit/review/{courseId}")
+    public RestResponse reviewCourse(
+        @PathVariable Long courseId,
+        @RequestBody ReviewDecision decision
+    ) {
+        if (decision == null || decision.approved() == null) {
+            GlobalException.cast("请选择审核结果");
+        }
+        coursePublishService.reviewCourse(
+            companyId,
+            courseId,
+            decision.approved(),
+            decision.reason(),
+            reviewerName
+        );
+        return RestResponse.success();
+    }
+
+    /** 查看本机构指定课程的历次审核结论，供审核工作台追踪操作。 */
+    @GetMapping("/courseaudit/history/{courseId}")
+    public List<Map<String, Object>> auditHistory(@PathVariable Long courseId) {
+        return coursePublishService.auditHistory(companyId, courseId);
     }
 
     /**

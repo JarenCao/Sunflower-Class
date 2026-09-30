@@ -39,6 +39,15 @@ export interface RestResponse<T> {
   msg: string
   result: T
 }
+/** 审核操作历史由后端 course_audit 表返回。 */
+export interface CourseAuditRecord {
+  id: number
+  courseId: number
+  status: string
+  reason: string
+  reviewer: string
+  reviewedAt: string
+}
 /** 课程分类节点，children 保存下一级分类。 */
 export interface Category {
   id: string

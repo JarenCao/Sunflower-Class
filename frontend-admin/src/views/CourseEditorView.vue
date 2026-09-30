@@ -1,7 +1,7 @@
 <!-- 课程编辑：依次完成基础及营销信息、章节编排和媒资绑定；新课程先保存再编排。 -->
 <script setup lang="ts">
 import { PAGE_SIZE } from '../api'
-import { computed, watch, ref } from 'vue'
+import { computed, onUnmounted, watch, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -27,19 +27,30 @@ const saving = ref(false)
 const planActionId = ref<number | null>(null)
 const courseStatus = ref('30501')
 const courseAuditStatus = ref('30402')
+const courseLoaded = ref(false)
 // 审核中和已发布课程只允许查看；审核通过后的修改会撤销旧结论。
 const canEdit = computed(
-  () => courseStatus.value !== '30502' && courseAuditStatus.value !== '30403',
+  () =>
+    (!id.value || courseLoaded.value) &&
+    courseStatus.value !== '30502' &&
+    courseAuditStatus.value !== '30403',
 )
 const categories = ref<Category[]>([])
 const plans = ref<Teachplan[]>([])
+const plansLoading = ref(false)
+const planSaving = ref(false)
 const media = ref<MediaFile[]>([])
 const planName = ref('')
 const planParent = ref(0)
 const bindPlanId = ref<number | null>(null)
 const selectedMedia = ref('')
+const mediaFileInput = ref<HTMLInputElement | null>(null)
+const mediaUploading = ref(false)
+const mediaUploadPercent = ref(0)
+const mediaUploadPhase = ref('')
+let mediaUploadAbort: AbortController | undefined
 // 默认采用初级、录播、免费课程的字典编码，提交时保留编码而非中文名称。
-const form = ref<CourseInput>({
+const emptyForm: CourseInput = {
   name: '',
   description: '',
   users: '',
@@ -52,7 +63,8 @@ const form = ref<CourseInput>({
   charge: '30201',
   price: 0,
   originalPrice: 0,
-})
+}
+const form = ref<CourseInput>({ ...emptyForm })
 const mediaPage = ref(1)
 const mediaCount = ref(0)
 // 媒资翻页后清空选择，防止误绑定上一页选中的资源。
@@ -62,10 +74,56 @@ async function refreshMedia() {
     media.value = result.items
     mediaCount.value = result.count
     selectedMedia.value = ''
+    return true
   } catch (error) {
     ElMessage.error((error as Error).message)
+    return false
   }
 }
+// 在课程编辑页复用媒资中心上传流程；视频须等待转码完成后才允许绑定。
+async function uploadCourseMedia(event: Event) {
+  const file = (event.target as HTMLInputElement).files?.[0]
+  if (!file || !canEdit.value) return
+  mediaUploading.value = true
+  mediaUploadPercent.value = 0
+  mediaUploadPhase.value = ''
+  mediaUploadAbort = new AbortController()
+  try {
+    const uploaded = await uploadMedia(
+      file,
+      // 上传进度及阶段沿用媒资中心的回调，不能把上传完成误认为转码完成。
+      (percent, phase) => {
+        mediaUploadPercent.value = percent
+        mediaUploadPhase.value = phase
+      },
+      mediaUploadAbort.signal,
+    )
+    mediaPage.value = 1
+    if (!(await refreshMedia())) return
+    // 普通文件上传接口返回媒资编号，可直接选中；视频合并接口只返回处理结果。
+    if (uploaded && media.value.some((item) => item.id === uploaded.id)) {
+      selectedMedia.value = uploaded.id
+      ElMessage.success('文件已上传并选中，请选择小节后绑定')
+    } else {
+      ElMessage.success(
+        mediaUploadPhase.value === '文件已存在'
+          ? '文件已存在，请从媒资列表中选择'
+          : '视频已上传，转码完成后可绑定',
+      )
+    }
+  } catch (error) {
+    if ((error as Error).name === 'AbortError') ElMessage.info('已停止上传')
+    else ElMessage.error((error as Error).message)
+  } finally {
+    mediaUploading.value = false
+    mediaUploadAbort = undefined
+    // 清空文件选择，以便失败后重新选择同一文件续传。
+    if (mediaFileInput.value) mediaFileInput.value.value = ''
+  }
+}
+
+// 离开课程编辑页时取消未完成请求，已保存的服务端分片仍可继续使用。
+onUnmounted(() => mediaUploadAbort?.abort())
 // 封面地址变化时重置失败标记，让新上传的图片重新尝试加载。
 const coverFailed = ref(false)
 watch(
@@ -78,34 +136,66 @@ watch(
 )
 // 未保存的新课程没有编号，不能查询或创建从属教学计划。
 async function refreshPlans() {
-  if (id.value) plans.value = await getTeachplan(id.value)
+  const courseId = id.value
+  if (!courseId) return
+  const coursePlans = await getTeachplan(courseId)
+  // 保存操作返回时可能已切换课程，旧课程的目录不能写入当前页面。
+  if (id.value === courseId) plans.value = coursePlans
 }
 // 目录或媒资变更后读取服务端状态，及时显示重新审核的要求。
 async function refreshCourseStatus() {
-  if (!id.value) return
-  const course = await getCourse(id.value)
+  const courseId = id.value
+  if (!courseId) return
+  const course = await getCourse(courseId)
+  if (id.value !== courseId) return
   courseStatus.value = course.status
   courseAuditStatus.value = course.auditStatus
 }
-// 新建后路由会切换到编辑页，重新读取服务端数据与可绑定媒资。
+// 课程编号变化时立即清空上一门课的数据，避免旧章节和父节点被带到新课程。
 watch(
-  // 同一编辑组件中的新建与编号路由切换也会触发重新加载。
-  () => route.fullPath,
-  // 先加载分类，再读取已有课程、教学计划和可选媒资。
-  async () => {
+  id,
+  // 异步请求完成前仍可能再次切换课程，失效的响应不能覆盖当前课程。
+  async (courseId, _previousId, onCleanup) => {
+    let expired = false
+    onCleanup(() => {
+      expired = true
+    })
+    activeTab.value = 'info'
+    form.value = { ...emptyForm }
+    courseLoaded.value = false
+    courseStatus.value = '30501'
+    courseAuditStatus.value = '30402'
+    plans.value = []
+    planName.value = ''
+    planParent.value = 0
+    bindPlanId.value = null
+    selectedMedia.value = ''
+    media.value = []
+    mediaCount.value = 0
+    mediaPage.value = 1
+    plansLoading.value = Boolean(courseId)
     try {
-      categories.value = await listCategories()
-      if (id.value) {
-        const course = await getCourse(id.value)
+      const categoryResult = await listCategories()
+      if (expired) return
+      categories.value = categoryResult
+      if (courseId) {
+        // 教学计划独立读取，不能因旧课程缺少营销信息而误显示为空。
+        const coursePlans = await getTeachplan(courseId)
+        if (expired) return
+        plans.value = coursePlans
+        plansLoading.value = false
+        const course = await getCourse(courseId)
+        if (expired) return
         form.value = course
         courseStatus.value = course.status
         courseAuditStatus.value = course.auditStatus
-        await refreshPlans()
-        mediaPage.value = 1
+        courseLoaded.value = true
         await refreshMedia()
       }
     } catch (error) {
-      ElMessage.error((error as Error).message)
+      if (!expired) ElMessage.error((error as Error).message)
+    } finally {
+      if (!expired) plansLoading.value = false
     }
   },
   { immediate: true },
@@ -130,7 +220,9 @@ async function save() {
 }
 // 保存章或小节后重新读取目录，以服务端返回的编号和排序为准。
 async function addPlan() {
-  if (!planName.value.trim() || !id.value) return
+  // 提交期间禁止重复点击，避免一次操作创建两个同名章节。
+  if (!planName.value.trim() || !id.value || plansLoading.value || planSaving.value) return
+  planSaving.value = true
   try {
     await addTeachplan(id.value, planName.value.trim(), planParent.value)
     planName.value = ''
@@ -139,6 +231,8 @@ async function addPlan() {
     ElMessage.success('教学计划已保存')
   } catch (error) {
     ElMessage.error((error as Error).message)
+  } finally {
+    planSaving.value = false
   }
 }
 // 确认当前页选中的媒资存在，绑定成功后刷新目录并关闭当前选择。
@@ -486,6 +580,7 @@ const flatPlans = computed(() => plans.value.flatMap((p) => [p, ...(p.teachPlanT
           <el-select
             v-model="planParent"
             style="width: 180px"
+            :disabled="!canEdit || plansLoading"
           >
             <el-option
               label="新增章节"
@@ -501,17 +596,22 @@ const flatPlans = computed(() => plans.value.flatMap((p) => [p, ...(p.teachPlanT
           <el-input
             v-model="planName"
             placeholder="输入章节或小节名称"
+            :disabled="!canEdit || plansLoading"
             @keyup.enter="addPlan"
           />
           <el-button
             type="primary"
-            :disabled="!canEdit"
+            :disabled="!canEdit || plansLoading || planSaving"
+            :loading="planSaving"
             @click="addPlan"
           >
             添加
           </el-button>
         </div>
-        <div class="plan-list">
+        <div
+          v-loading="plansLoading"
+          class="plan-list"
+        >
           <div
             v-for="(plan, index) in plans"
             :key="plan.id"
@@ -594,7 +694,7 @@ const flatPlans = computed(() => plans.value.flatMap((p) => [p, ...(p.teachPlanT
             </div>
           </div>
           <div
-            v-if="!plans.length"
+            v-if="!plans.length && !plansLoading"
             class="empty-card"
           >
             暂无教学计划，添加一个章节开始编排。
@@ -607,13 +707,61 @@ const flatPlans = computed(() => plans.value.flatMap((p) => [p, ...(p.teachPlanT
       >
         <div class="form-intro">
           <h2>关联媒资</h2>
-          <p>将已上传的视频或资料绑定到教学计划小节。</p>
+          <p>上传新媒资，或从已有文件中选择，再绑定到教学计划小节。</p>
+        </div>
+        <!-- 就地上传复用媒资中心接口；已发布或审核中课程不允许在这里新增绑定。 -->
+        <div class="media-upload-inline">
+          <div>
+            <strong>上传新媒资</strong>
+            <p>图片上传后可直接选择；视频需等待转码完成后才能绑定。</p>
+          </div>
+          <div class="media-upload-actions">
+            <el-button
+              :disabled="mediaUploading"
+              @click="refreshMedia"
+            >
+              刷新列表
+            </el-button>
+            <el-button
+              :disabled="!canEdit || mediaUploading"
+              @click="mediaFileInput?.click()"
+            >
+              {{ mediaUploading ? '上传中…' : '选择文件上传' }}
+            </el-button>
+          </div>
+          <input
+            ref="mediaFileInput"
+            type="file"
+            hidden
+            :disabled="!canEdit || mediaUploading"
+            aria-label="上传关联媒资"
+            @change="uploadCourseMedia"
+          />
+        </div>
+        <div
+          v-if="mediaUploading"
+          class="media-upload-progress"
+        >
+          <span>{{ mediaUploadPhase || '准备上传' }}</span>
+          <el-progress :percentage="mediaUploadPercent" />
+          <el-button @click="mediaUploadAbort?.abort()">停止上传</el-button>
+        </div>
+        <div
+          v-if="!canEdit"
+          class="notice-strip"
+        >
+          {{
+            courseStatus === '30502'
+              ? '课程已发布，请先下架再关联媒资。'
+              : '课程审核中，暂不能关联媒资。'
+          }}
         </div>
         <div class="plan-add">
           <el-select
             v-model="bindPlanId"
             placeholder="选择小节"
             style="width: 220px"
+            :disabled="!canEdit || mediaUploading"
           >
             <el-option
               v-for="plan in flatPlans.filter((p) => (p.grade || 2) > 1)"
@@ -625,17 +773,19 @@ const flatPlans = computed(() => plans.value.flatMap((p) => [p, ...(p.teachPlanT
           <el-select
             v-model="selectedMedia"
             placeholder="选择媒资文件"
+            :disabled="!canEdit || mediaUploading"
           >
             <el-option
               v-for="item in media"
               :key="item.id"
-              :label="item.filename"
+              :label="item.status === '20302' ? item.filename : `${item.filename}（暂不可绑定）`"
               :value="item.id"
+              :disabled="item.status !== '20302'"
             />
           </el-select>
           <el-button
             type="primary"
-            :disabled="!canEdit"
+            :disabled="!canEdit || mediaUploading || !bindPlanId || !selectedMedia"
             @click="bind"
           >
             绑定
@@ -660,7 +810,7 @@ const flatPlans = computed(() => plans.value.flatMap((p) => [p, ...(p.teachPlanT
           <br />
           从这里开始。
         </h3>
-        <p>建议先保存课程，再添加教学计划，最后到媒资中心上传并绑定视频。</p>
+        <p>建议先保存课程，再添加教学计划，最后在关联媒资中上传并绑定视频。</p>
         <div class="aside-steps">
           <span>① 完善课程信息</span>
           <span>② 编排章节与小节</span>
@@ -673,6 +823,38 @@ const flatPlans = computed(() => plans.value.flatMap((p) => [p, ...(p.teachPlanT
 </template>
 
 <style scoped>
+.media-upload-inline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 18px 20px;
+  border: 1px solid #e1e8ef;
+  border-radius: 10px;
+  background: #f7fafc;
+}
+.media-upload-inline strong {
+  color: #304260;
+  font-size: 14px;
+}
+.media-upload-inline p {
+  margin: 6px 0 0;
+  color: #8392a3;
+  font-size: 12px;
+}
+.media-upload-actions {
+  display: flex;
+  flex: none;
+}
+.media-upload-progress {
+  display: grid;
+  grid-template-columns: 1fr 2fr auto;
+  align-items: center;
+  gap: 14px;
+  margin-top: 14px;
+  color: #738396;
+  font-size: 12px;
+}
 .cover-upload {
   width: 100%;
   margin-top: 12px;
