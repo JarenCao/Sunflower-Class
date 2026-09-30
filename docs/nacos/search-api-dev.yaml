@@ -1,0 +1,6 @@
+# namespace: dev，group: sunflower_class；数据库和 RabbitMQ 密码继续使用已有外部配置。
+server:
+  port: 63060
+  servlet:
+    context-path: /search
+

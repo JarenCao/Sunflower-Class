@@ -6,6 +6,8 @@ Sunflower Class is a Java 21 Spring Boot/Cloud backend. `parent/pom.xml` central
 
 Java sources live in `src/main/java`; configuration and mapper XML live in `src/main/resources`; tests live in `src/test/java`. `frontend-admin/` is the institution/reviewer Vue app and `frontend-student/` is the learner Vue app. Each has its own `src/`, `package.json`, and lockfile. Product requirements and the implementation checklist are in `docs/`.
 
+`search/` and `learning/` follow the same `*_model`, `*_service`, `*_api` module layout. They reuse the publication protocol in `base/`. Search uses Elasticsearch; learning maintains a separate MySQL directory replica. Their ports are 63060 and 63070; configuration and migration steps are in `docs/COURSE_MESSAGE_SERVICES.md`.
+
 ## Build, Test, and Development Commands
 
 Use JDK 21 and an installed Maven; no Maven wrapper or root aggregator POM is present. Run commands from the repository root:
@@ -25,6 +27,8 @@ Install the parent and shared base first. Content and media builds compile their
 - `mvn -f content/content_api/pom.xml spring-boot:run`: start the content API; substitute `media/media_api` or `gateway` for other applications.
 
 For each frontend, run `npm ci`, `npm run dev`, and `npm run build` inside its directory. Development ports are 5173 (admin) and 5174 (student). Both use real APIs through Gateway, without browser storage or demo fallback. See `docs/LIVE_INTEGRATION.md`.
+
+Build and install new services with `mvn -f search/pom.xml install` and `mvn -f learning/pom.xml install` after installing base. Start with `mvn -f search/search_api/pom.xml spring-boot:run` or `mvn -f learning/learning_api/pom.xml spring-boot:run`; deploy Nacos configuration and the learning table first.
 
 ## Coding Style & Naming Conventions
 

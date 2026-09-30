@@ -3,7 +3,16 @@
 import { PAGE_SIZE } from '../api'
 import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { deleteCourse, listCourses, offlineCourse, submitAudit, publishCourse } from '../api'
+import {
+  deleteCourse,
+  listCourses,
+  offlineCourse,
+  submitAudit,
+  publishCourse,
+  listPublicationMessages,
+  retryPublicationMessage,
+} from '../api'
+import type { PublicationMessage } from '../api'
 import type { Course } from '../types'
 
 const rows = ref<Course[]>([])
@@ -12,6 +21,49 @@ const count = ref(0)
 const search = ref('')
 const loading = ref(false)
 const actionId = ref<number | null>(null)
+const syncCourseId = ref(0)
+const syncOpen = ref(false)
+const syncLoading = ref(false)
+const syncMessages = ref<PublicationMessage[]>([])
+/** 打开同步进度时清空旧课程，所有状态直接读取内容服务。 */
+async function showSync(id: number) {
+  syncCourseId.value = id
+  syncMessages.value = []
+  syncOpen.value = true
+  await refreshSync()
+}
+/** 手动刷新同步状态，避免关闭页面后仍存在轮询请求。 */
+async function refreshSync() {
+  const courseId = syncCourseId.value
+  syncLoading.value = true
+  try {
+    const messages = await listPublicationMessages(courseId)
+    if (courseId === syncCourseId.value) syncMessages.value = messages
+  } catch (error) {
+    ElMessage.error((error as Error).message)
+  } finally {
+    if (courseId === syncCourseId.value) syncLoading.value = false
+  }
+}
+/** 请求恢复后刷新状态；重试提交成功不代表下游业务已经完成。 */
+async function retrySync(id: number) {
+  syncLoading.value = true
+  try {
+    await retryPublicationMessage(id)
+    ElMessage.success('已安排重试，请稍后刷新同步状态')
+    await refreshSync()
+  } catch (error) {
+    ElMessage.error((error as Error).message)
+  } finally {
+    syncLoading.value = false
+  }
+}
+/** 五位课程码与消息处理码分别解释，不混用审核状态。 */
+function syncLabel(state: string) {
+  return (
+    ({ '0': '待处理', '1': '成功', '2': '失败待重试' } as Record<string, string>)[state] || '未知'
+  )
+}
 // 搜索条件变化后从第一页重新查询。
 function searchFromFirstPage() {
   page.value = 1
@@ -45,7 +97,7 @@ async function audit(id: number) {
 async function publish(id: number) {
   try {
     await publishCourse(id)
-    ElMessage.success('课程已发布')
+    ElMessage.success('课程已发布，搜索与学习目录正在同步')
     await refresh()
   } catch (error) {
     ElMessage.error((error as Error).message)
@@ -54,7 +106,7 @@ async function publish(id: number) {
 // 二次确认下架，成功后重新读取服务端发布状态。
 async function offline(id: number) {
   try {
-    await ElMessageBox.confirm('下架后学员端将不再显示这门课程。确定下架吗？', '下架课程', {
+    await ElMessageBox.confirm('下架同步完成后学员端将不再显示这门课程。确定下架吗？', '下架课程', {
       type: 'warning',
       confirmButtonText: '确定下架',
       cancelButtonText: '取消',
@@ -255,6 +307,13 @@ const auditLabel = (s: string) =>
               编辑与编排
             </RouterLink>
             <el-button
+              size="small"
+              plain
+              @click="showSync(row.id)"
+            >
+              同步状态
+            </el-button>
+            <el-button
               v-if="
                 ['30401', '30402'].includes(row.auditStatus) &&
                 ['30501', '30503'].includes(row.status)
@@ -317,6 +376,72 @@ const auditLabel = (s: string) =>
       已发布课程须先下架。删除会清理课程与教学计划，媒资文件仍保留在媒资中心。
     </div>
   </div>
+  <!-- 最近十条消息由后端限制；恢复入口不会改动审核或发布状态。 -->
+  <el-dialog
+    v-model="syncOpen"
+    title="课程同步状态"
+    width="900px"
+  >
+    <el-table
+      v-loading="syncLoading"
+      :data="syncMessages"
+      empty-text="暂无发布或下架事件"
+    >
+      <el-table-column
+        prop="id"
+        label="事件"
+        width="70"
+      />
+      <el-table-column
+        label="操作"
+        width="80"
+      >
+        <template #default="{ row }">{{ row.businessKey3 === '30503' ? '下架' : '发布' }}</template>
+      </el-table-column>
+      <el-table-column label="总状态">
+        <template #default="{ row }">{{ syncLabel(row.state) }}</template>
+      </el-table-column>
+      <el-table-column label="投递">
+        <template #default="{ row }">{{ syncLabel(row.stageState1) }}</template>
+      </el-table-column>
+      <el-table-column label="搜索">
+        <template #default="{ row }">{{ syncLabel(row.stageState3) }}</template>
+      </el-table-column>
+      <el-table-column label="学习目录">
+        <template #default="{ row }">{{ syncLabel(row.stageState4) }}</template>
+      </el-table-column>
+      <el-table-column
+        prop="executeNum"
+        label="投递次数"
+        width="90"
+      />
+      <el-table-column
+        label="恢复"
+        width="90"
+      >
+        <template #default="{ row }">
+          <el-button
+            v-if="row.state !== '1'"
+            :disabled="syncLoading"
+            size="small"
+            @click="retrySync(row.id)"
+          >
+            重试
+          </el-button>
+        </template>
+      </el-table-column>
+    </el-table>
+    <p>队列投递确认后，收到搜索与学习服务的成功回执才算同步完成。自动投递最多十次。</p>
+    <template #footer>
+      <el-button
+        :disabled="syncLoading"
+        @click="refreshSync"
+      >
+        刷新状态
+      </el-button>
+      <el-button @click="syncOpen = false">关闭</el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <style scoped>

@@ -15,6 +15,28 @@ import type {
 // 管理列表统一每页十条；首页摘要可以单独指定数量。
 export const PAGE_SIZE = 10
 
+/** 发布事件状态独立于审核与上下架状态，分别显示两个服务的消费结果。 */
+export interface PublicationMessage {
+  id: number
+  businessKey3: string
+  state: string
+  stageState1: string
+  stageState3: string
+  stageState4: string
+  executeNum: number
+  returnfailureMsg?: string
+}
+
+/** 读取本机构某课程最近十次发布或下架事件的真实处理进度。 */
+export async function listPublicationMessages(courseId: number): Promise<PublicationMessage[]> {
+  return (await http.get('/publication-messages', { params: { courseId } })).data
+}
+
+/** 手动恢复未完成事件，已有成功消费结果保留，由后端保证机构归属。 */
+export async function retryPublicationMessage(id: number): Promise<void> {
+  check((await http.post(`/publication-messages/${id}/retry`)).data)
+}
+
 // 内容与媒资使用不同服务前缀；上传请求允许更长的等待时间。
 const http = axios.create({ baseURL: '/api/content', timeout: 30000 })
 const mediaHttp = axios.create({ baseURL: '/api/media', timeout: 120000 })

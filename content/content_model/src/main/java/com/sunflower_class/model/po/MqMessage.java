@@ -31,6 +31,9 @@ public class MqMessage {
     @Schema(description = "关联业务Key3（扩展字段，如消息内容JSON）")
     private String businessKey3;
 
+    @Schema(description = "事件发生时的正式课程快照，重试时不能读取后续变更后的快照")
+    private String payload;
+
     @Schema(description = "执行次数（重试计数）")
     private Integer executeNum;
 
@@ -75,7 +78,7 @@ public class MqMessage {
     private String stageState3;
 
     @Schema(
-        description = "阶段4处理状态（0-初始，1-成功,2-失败）- 订单服务同步",
+        description = "阶段4处理状态（0-初始，1-成功,2-失败）- 学习目录同步",
         example = "0",
         allowableValues = { "0", "1", "2" }
     )

@@ -450,7 +450,11 @@ public class CoursePublishServiceImpl implements CoursePublishService {
     /** 将发布事件写入待发送表；调用方的事务保证快照、状态和消息同时提交。 */
     private void saveCoursePublishMessage(Long courseId) {
         CoursePublish published = coursePublishMapper.selectById(courseId);
-        if (published == null || !COURSE_PUBLISHED.equals(published.getStatus())) {
+        if (
+            published == null ||
+            (!COURSE_PUBLISHED.equals(published.getStatus()) &&
+                !COURSE_OFFLINE.equals(published.getStatus()))
+        ) {
             GlobalException.cast("课程发布记录不存在，无法保存发布消息");
         }
 
@@ -458,7 +462,9 @@ public class CoursePublishServiceImpl implements CoursePublishService {
         message.setMessageType("course_publish");
         message.setBusinessKey1(courseId.toString());
         message.setBusinessKey2(published.getCompanyId().toString());
-        message.setBusinessKey3(COURSE_PUBLISHED);
+        message.setBusinessKey3(published.getStatus());
+        // 保存事件产生时的快照，避免延迟消费把新版本误当作旧事件。
+        message.setPayload(JSON.toJSONString(published));
         message.setExecuteNum(0);
         message.setState("0");
         // 各处理阶段均未开始；消息发送及消费由开发清单的下一项负责。
@@ -511,6 +517,8 @@ public class CoursePublishServiceImpl implements CoursePublishService {
         if (courseBaseMapper.updateById(course) != 1) {
             GlobalException.cast("课程下架失败");
         }
+        // 下架也必须通知下游，防止搜索与学习目录继续展示已下架课程。
+        saveCoursePublishMessage(courseId);
         log.info("课程下架完成，课程ID：{}，机构ID：{}", courseId, companyId);
     }
 }

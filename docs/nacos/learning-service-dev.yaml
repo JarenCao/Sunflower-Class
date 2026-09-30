@@ -1,0 +1,7 @@
+# namespace: dev，group: sunflower_class。将实际值保存在 Nacos 或环境变量中。
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: ${LEARNING_DB_URL}
+    username: ${LEARNING_DB_USER}
+    password: ${LEARNING_DB_PASSWORD}

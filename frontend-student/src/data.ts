@@ -1,4 +1,4 @@
-/* 学员端数据适配层：读取公开发布快照并转换为课程展示模型。 */
+/* 学员端数据适配层：读取搜索与学习服务的发布副本，转换为课程展示模型。 */
 import axios from 'axios'
 // 页面展示的小节模型；时长和试看标记允许后续接口补充。
 export interface Lesson {
@@ -43,7 +43,7 @@ interface PublishedCourse {
   pic?: string
   teachplan?: string
 }
-const client = axios.create({ baseURL: '/api/content', timeout: 15000 })
+const client = axios.create({ baseURL: '/api', timeout: 15000 })
 client.interceptors.response.use(
   // 保留成功响应，由具体请求读取 data 并转换课程模型。
   (r) => r,
@@ -93,12 +93,12 @@ function adapt(source: PublishedCourse): Course {
     chapters,
   }
 }
-/** 分批读取全部已发布课程，用于本地筛选；页面展示另按每页十条分页。 */
+/** 首页从搜索服务读取已发布课程，保留原有展示模型。 */
 export async function getCourses(): Promise<Course[]> {
   const result: Course[] = []
   let page = 1
   while (true) {
-    const { data } = await client.get('/published-courses', {
+    const { data } = await client.get('/search/courses', {
       params: { pageNo: page, pageSize: 100 },
     })
     result.push(...data.items.map(adapt))
@@ -109,5 +109,23 @@ export async function getCourses(): Promise<Course[]> {
 }
 // 详情同样通过统一转换函数处理，保持列表与详情的字段含义一致。
 export async function getCourse(id: number): Promise<Course> {
-  return adapt((await client.get(`/published-courses/${id}`)).data)
+  // 详情与目录分别读取对应服务的真实副本；任一失败都不能用旧数据或演示目录替代。
+  const [detail, directory] = await Promise.all([
+    client.get(`/search/courses/${id}`),
+    client.get(`/learning/courses/${id}/directory`),
+  ])
+  return adapt({ ...detail.data, teachplan: directory.data.teachplan })
+}
+
+/** 全部课程由搜索服务完成关键词、分类及分页，避免全量下载后本地筛选。 */
+export async function searchCourses(pageNo: number, q: string, category: string) {
+  const { data } = await client.get('/search/courses', {
+    params: { pageNo, pageSize: 10, q, category: category === '全部课程' ? '' : category },
+  })
+  return { items: (data.items as PublishedCourse[]).map(adapt), count: Number(data.count) }
+}
+
+/** 分类不依赖当前搜索页的数据，确保分页后仍可切换所有分类。 */
+export async function getCourseCategories(): Promise<string[]> {
+  return (await client.get('/search/categories')).data
 }

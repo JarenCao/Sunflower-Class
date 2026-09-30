@@ -6,7 +6,7 @@
   "name": "xiaokuihua-code-tools",
   "private": true,
   "scripts": {
-    "format": "prettier --write \"frontend-{admin,student}/src/**/*.{vue,ts,css}\" \"frontend-{admin,student}/*.{ts,html,json}\" \"{base,content,media,gateway}/**/src/**/*.java\" \"scripts/*.java\"",
-    "format:check": "prettier --check \"frontend-{admin,student}/src/**/*.{vue,ts,css}\" \"frontend-{admin,student}/*.{ts,html,json}\" \"{base,content,media,gateway}/**/src/**/*.java\" \"scripts/*.java\""
+    "format": "prettier --write \"frontend-{admin,student}/src/**/*.{vue,ts,css}\" \"frontend-{admin,student}/*.{ts,html,json}\" \"{base,content,media,gateway,search,learning}/**/src/**/*.java\" \"scripts/*.java\"",
+    "format:check": "prettier --check \"frontend-{admin,student}/src/**/*.{vue,ts,css}\" \"frontend-{admin,student}/*.{ts,html,json}\" \"{base,content,media,gateway,search,learning}/**/src/**/*.java\" \"scripts/*.java\""
   }
 }

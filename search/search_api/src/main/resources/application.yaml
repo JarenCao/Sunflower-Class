@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: search-api
+  profiles:
+    active: dev
+  config:
+    import:
+      - "nacos:search-service-dev.yaml?group=sunflower_class"
+      - "nacos:search-api-dev.yaml?group=sunflower_class"
+      - "nacos:logging-dev.yaml?group=common"
+      - "nacos:swagger-dev.yaml?group=common"
+      - "nacos:rabbitmq-dev.yaml?group=common"
+  cloud:
+    nacos:
+      config:
+        enabled: true
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        namespace: ${NACOS_NAMESPACE:dev}
+        group: sunflower_class
+        file-extension: yaml
+        refresh-enabled: true
+      discovery:
+        enabled: true
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        namespace: ${NACOS_NAMESPACE:dev}
+        group: sunflower_class
+  rabbitmq:
+    publisher-confirm-type: correlated
+    publisher-returns: true

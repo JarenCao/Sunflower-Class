@@ -1,8 +1,12 @@
 package com.sunflower_class.base.config;
 
+import java.util.ArrayList;
+import java.util.List;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.core.AcknowledgeMode;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
+import org.springframework.amqp.core.Declarables;
 import org.springframework.amqp.core.DirectExchange;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.QueueBuilder;
@@ -15,8 +19,6 @@ import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
-
-import lombok.extern.slf4j.Slf4j;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -35,6 +37,10 @@ public class RabbitMQConfig {
     public static final String COURSE_CACHE_ROUTING_KEY = "course.cache";
     public static final String COURSE_SEARCH_ROUTING_KEY = "course.search";
     public static final String COURSE_ORDER_ROUTING_KEY = "course.order";
+    public static final String COURSE_LEARNING_QUEUE = "course.learning.queue";
+    public static final String COURSE_LEARNING_ROUTING_KEY = "course.learning";
+    public static final String COURSE_RECEIPT_QUEUE = "course.publish.receipt.queue";
+    public static final String COURSE_RECEIPT_ROUTING_KEY = "course.publish.receipt";
 
     /**
      * 创建 RabbitMQ 的 JSON 消息转换器，允许反序列化项目 DTO 包中的消息类型。
@@ -42,7 +48,11 @@ public class RabbitMQConfig {
     @Bean
     @Primary
     public MessageConverter messageConverter(JsonMapper objectMapper) {
-        return new JacksonJsonMessageConverter(objectMapper, "com.sunflower_class.model.dto");
+        return new JacksonJsonMessageConverter(
+            objectMapper,
+            "com.sunflower_class.model.dto",
+            "com.sunflower_class.base.course"
+        );
     }
 
     /**
@@ -51,29 +61,34 @@ public class RabbitMQConfig {
     @Bean
     @Primary
     public RabbitTemplate rabbitTemplate(
-            ConnectionFactory connectionFactory,
-            MessageConverter messageConverter) {
+        ConnectionFactory connectionFactory,
+        MessageConverter messageConverter
+    ) {
         RabbitTemplate rabbitTemplate = new RabbitTemplate(connectionFactory);
         rabbitTemplate.setMessageConverter(messageConverter);
+        // 强制退回无匹配队列的消息；发送方必须同时检查确认与退回结果。
+        rabbitTemplate.setMandatory(true);
 
         // 确认回调仅在交换机未确认时记录原因，不代表队列消费结果。
         rabbitTemplate.setConfirmCallback((correlationData, ack, cause) -> {
             if (!ack) {
                 log.error(
-                        "消息未到达交换机: correlationId={}, cause={}",
-                        correlationData != null ? correlationData.getId() : null,
-                        cause);
+                    "消息未到达交换机: correlationId={}, cause={}",
+                    correlationData != null ? correlationData.getId() : null,
+                    cause
+                );
             }
         });
 
         // 退回回调记录无法路由到队列的交换机和路由键信息。
         rabbitTemplate.setReturnsCallback(returned -> {
             log.error(
-                    "消息未路由到队列: exchange={}, routingKey={}, replyCode={}, replyText={}",
-                    returned.getExchange(),
-                    returned.getRoutingKey(),
-                    returned.getReplyCode(),
-                    returned.getReplyText());
+                "消息未路由到队列: exchange={}, routingKey={}, replyCode={}, replyText={}",
+                returned.getExchange(),
+                returned.getRoutingKey(),
+                returned.getReplyCode(),
+                returned.getReplyText()
+            );
         });
 
         return rabbitTemplate;
@@ -85,8 +100,9 @@ public class RabbitMQConfig {
     @Bean
     @Primary
     public RabbitListenerContainerFactory<?> rabbitListenerContainerFactory(
-            ConnectionFactory connectionFactory,
-            MessageConverter messageConverter) {
+        ConnectionFactory connectionFactory,
+        MessageConverter messageConverter
+    ) {
         SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
         factory.setConnectionFactory(connectionFactory);
         factory.setMessageConverter(messageConverter);
@@ -143,8 +159,8 @@ public class RabbitMQConfig {
     @Bean
     public Binding courseCacheBinding() {
         return BindingBuilder.bind(courseCacheQueue())
-                .to(directExchange())
-                .with(COURSE_CACHE_ROUTING_KEY);
+            .to(directExchange())
+            .with(COURSE_CACHE_ROUTING_KEY);
     }
 
     /**
@@ -153,8 +169,8 @@ public class RabbitMQConfig {
     @Bean
     public Binding courseSearchBinding() {
         return BindingBuilder.bind(courseSearchQueue())
-                .to(directExchange())
-                .with(COURSE_SEARCH_ROUTING_KEY);
+            .to(directExchange())
+            .with(COURSE_SEARCH_ROUTING_KEY);
     }
 
     /**
@@ -163,8 +179,8 @@ public class RabbitMQConfig {
     @Bean
     public Binding courseOrderBinding() {
         return BindingBuilder.bind(courseOrderQueue())
-                .to(directExchange())
-                .with(COURSE_ORDER_ROUTING_KEY);
+            .to(directExchange())
+            .with(COURSE_ORDER_ROUTING_KEY);
     }
 
     /**
@@ -173,5 +189,60 @@ public class RabbitMQConfig {
     @Bean
     public Binding videoBinding() {
         return BindingBuilder.bind(videoQueue()).to(directExchange()).with("video");
+    }
+
+    /** 学习目录同步采用独立持久化队列，不能复用订单队列的业务含义。 */
+    @Bean
+    public Queue courseLearningQueue() {
+        return QueueBuilder.durable(COURSE_LEARNING_QUEUE).build();
+    }
+
+    /** 将学习目录事件路由到学习服务。 */
+    @Bean
+    public Binding courseLearningBinding() {
+        return BindingBuilder.bind(courseLearningQueue())
+            .to(directExchange())
+            .with(COURSE_LEARNING_ROUTING_KEY);
+    }
+
+    /** 持久化消费回执，内容服务重启后仍能接收处理结果。 */
+    @Bean
+    public Queue courseReceiptQueue() {
+        return QueueBuilder.durable(COURSE_RECEIPT_QUEUE).build();
+    }
+
+    /** 将搜索与学习服务的回执统一路由到内容服务。 */
+    @Bean
+    public Binding courseReceiptBinding() {
+        return BindingBuilder.bind(courseReceiptQueue())
+            .to(directExchange())
+            .with(COURSE_RECEIPT_ROUTING_KEY);
+    }
+
+    /** 两个消费者复用原生 TTL 重试和失败队列，业务方法不重复声明拓扑。 */
+    @Bean
+    public Declarables courseRetryQueues() {
+        List<org.springframework.amqp.core.Declarable> declarations = new ArrayList<>();
+        for (String target : List.of("search", "learning")) {
+            Queue retry = QueueBuilder.durable("course." + target + ".retry.queue")
+                .ttl(10000)
+                .deadLetterExchange(DIRECT_EXCHANGE)
+                .deadLetterRoutingKey("course." + target)
+                .build();
+            Queue failed = QueueBuilder.durable("course." + target + ".failed.queue").build();
+            declarations.add(retry);
+            declarations.add(failed);
+            declarations.add(
+                BindingBuilder.bind(retry)
+                    .to(directExchange())
+                    .with("course." + target + ".retry")
+            );
+            declarations.add(
+                BindingBuilder.bind(failed)
+                    .to(directExchange())
+                    .with("course." + target + ".failed")
+            );
+        }
+        return new Declarables(declarations);
     }
 }

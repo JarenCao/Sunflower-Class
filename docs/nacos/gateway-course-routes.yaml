@@ -1,0 +1,15 @@
+# 合并到 dev / sunflower_class / gateway-dev.yaml 的 routes 列表，保留原路由。
+spring:
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: search-api
+              uri: lb://search-api
+              predicates:
+                - Path=/search/**
+            - id: learning-api
+              uri: lb://learning-api
+              predicates:
+                - Path=/learning/**
