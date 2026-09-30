@@ -17,8 +17,6 @@ public class GlobalException extends RuntimeException {
 
     /**
      * 带错误信息的构造方法
-     * 
-     * @param errMessage 错误信息
      */
     public GlobalException(String errMessage) {
         super(errMessage);
@@ -27,8 +25,6 @@ public class GlobalException extends RuntimeException {
 
     /**
      * 获取错误信息
-     * 
-     * @return 错误信息
      */
     public String getErrMessage() {
         return errMessage;
@@ -36,8 +32,6 @@ public class GlobalException extends RuntimeException {
 
     /**
      * 静态方法：快速抛出异常（使用 CommonError）
-     * 
-     * @param commonError 通用错误枚举
      */
     public static void cast(CommonError commonError) {
         throw new GlobalException(commonError.getMessage());
@@ -45,8 +39,6 @@ public class GlobalException extends RuntimeException {
 
     /**
      * 静态方法：快速抛出异常（使用错误信息）
-     * 
-     * @param errMessage 错误信息
      */
     public static void cast(String errMessage) {
         throw new GlobalException(errMessage);

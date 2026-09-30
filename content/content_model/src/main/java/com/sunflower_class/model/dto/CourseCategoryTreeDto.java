@@ -1,9 +1,11 @@
 package com.sunflower_class.model.dto;
 
-import com.sunflower_class.model.po.CourseCategory;
-import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
 import java.util.List;
+
+import com.sunflower_class.model.po.CourseCategory;
+
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 /**

@@ -1,6 +1,5 @@
 package com.sunflower_class.base.config;
 
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.core.AcknowledgeMode;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
@@ -16,6 +15,8 @@ import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
+
+import lombok.extern.slf4j.Slf4j;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -50,9 +51,8 @@ public class RabbitMQConfig {
     @Bean
     @Primary
     public RabbitTemplate rabbitTemplate(
-        ConnectionFactory connectionFactory,
-        MessageConverter messageConverter
-    ) {
+            ConnectionFactory connectionFactory,
+            MessageConverter messageConverter) {
         RabbitTemplate rabbitTemplate = new RabbitTemplate(connectionFactory);
         rabbitTemplate.setMessageConverter(messageConverter);
 
@@ -60,22 +60,20 @@ public class RabbitMQConfig {
         rabbitTemplate.setConfirmCallback((correlationData, ack, cause) -> {
             if (!ack) {
                 log.error(
-                    "消息未到达交换机: correlationId={}, cause={}",
-                    correlationData != null ? correlationData.getId() : null,
-                    cause
-                );
+                        "消息未到达交换机: correlationId={}, cause={}",
+                        correlationData != null ? correlationData.getId() : null,
+                        cause);
             }
         });
 
         // 退回回调记录无法路由到队列的交换机和路由键信息。
         rabbitTemplate.setReturnsCallback(returned -> {
             log.error(
-                "消息未路由到队列: exchange={}, routingKey={}, replyCode={}, replyText={}",
-                returned.getExchange(),
-                returned.getRoutingKey(),
-                returned.getReplyCode(),
-                returned.getReplyText()
-            );
+                    "消息未路由到队列: exchange={}, routingKey={}, replyCode={}, replyText={}",
+                    returned.getExchange(),
+                    returned.getRoutingKey(),
+                    returned.getReplyCode(),
+                    returned.getReplyText());
         });
 
         return rabbitTemplate;
@@ -87,9 +85,8 @@ public class RabbitMQConfig {
     @Bean
     @Primary
     public RabbitListenerContainerFactory<?> rabbitListenerContainerFactory(
-        ConnectionFactory connectionFactory,
-        MessageConverter messageConverter
-    ) {
+            ConnectionFactory connectionFactory,
+            MessageConverter messageConverter) {
         SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
         factory.setConnectionFactory(connectionFactory);
         factory.setMessageConverter(messageConverter);
@@ -146,8 +143,8 @@ public class RabbitMQConfig {
     @Bean
     public Binding courseCacheBinding() {
         return BindingBuilder.bind(courseCacheQueue())
-            .to(directExchange())
-            .with(COURSE_CACHE_ROUTING_KEY);
+                .to(directExchange())
+                .with(COURSE_CACHE_ROUTING_KEY);
     }
 
     /**
@@ -156,8 +153,8 @@ public class RabbitMQConfig {
     @Bean
     public Binding courseSearchBinding() {
         return BindingBuilder.bind(courseSearchQueue())
-            .to(directExchange())
-            .with(COURSE_SEARCH_ROUTING_KEY);
+                .to(directExchange())
+                .with(COURSE_SEARCH_ROUTING_KEY);
     }
 
     /**
@@ -166,8 +163,8 @@ public class RabbitMQConfig {
     @Bean
     public Binding courseOrderBinding() {
         return BindingBuilder.bind(courseOrderQueue())
-            .to(directExchange())
-            .with(COURSE_ORDER_ROUTING_KEY);
+                .to(directExchange())
+                .with(COURSE_ORDER_ROUTING_KEY);
     }
 
     /**

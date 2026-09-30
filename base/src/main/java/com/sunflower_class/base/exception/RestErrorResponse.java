@@ -23,8 +23,6 @@ public class RestErrorResponse implements Serializable {
 
     /**
      * 有参构造方法
-     * 
-     * @param errMessage 错误信息
      */
     public RestErrorResponse(String errMessage) {
         this.errMessage = errMessage;

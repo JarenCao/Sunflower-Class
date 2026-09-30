@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.sunflower_class.base.model.PageParams;
@@ -28,6 +29,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
  */
 @CrossOrigin(origins = "*")
 @RestController
+@RequestMapping("/course")
 @Tag(name = "课程管理", description = "课程基础信息相关接口")
 public class CourseBaseInfoController {
 
@@ -43,7 +45,7 @@ public class CourseBaseInfoController {
      */
     @Operation(summary = "查询课程列表", description = "根据条件分页查询课程信息")
     // PageParams 从请求参数绑定，课程名称及状态等筛选条件从 JSON 请求体读取。
-    @PostMapping("/course/list")
+    @PostMapping("/list")
     public PageResult<CourseBaseInfoDto> list(
             PageParams pageParams,
             @RequestBody QueryCourseParamsDto queryCourseParamsDto) {
@@ -54,7 +56,7 @@ public class CourseBaseInfoController {
      * 接收并校验新增课程表单，调用服务层保存基础与营销信息，返回完整课程详情。
      */
     @Operation(summary = "添加课程", description = "添加课程基本信息")
-    @PostMapping("/course")
+    @PostMapping
     public CourseBaseInfoDto AddCourseBase(@RequestBody @Validated AddCourseDto addCourseDto) {
         return courseBaseInfoService.createCourseBase(addCourseDto);
     }
@@ -63,7 +65,7 @@ public class CourseBaseInfoController {
      * 按课程编号读取编辑详情；旧课程缺少营销记录时由服务层补展示默认值。
      */
     @Operation(summary = "查询课程", description = "查询课程基本信息")
-    @GetMapping("/course/{id}")
+    @GetMapping("/{id}")
     public CourseBaseInfoDto selectCourseById(@PathVariable Long id) {
         return courseBaseInfoService.getCourseById(id);
     }
@@ -73,7 +75,7 @@ public class CourseBaseInfoController {
      */
     @Operation(summary = "更新课程", description = "更新课程基本信息")
     // 先执行 DTO 参数校验，再由服务层比较配置机构编号与课程归属。
-    @PutMapping("/course")
+    @PutMapping
     public CourseBaseInfoDto updateCourseBaseInfo(
             @RequestBody @Validated EditCourseDto editCourseDto) {
         return courseBaseInfoService.updateCourseBaseInfo(companyId, editCourseDto);
@@ -83,7 +85,7 @@ public class CourseBaseInfoController {
      * 删除本机构未发布或已下架课程；已发布课程必须先下架。
      */
     @Operation(summary = "删除课程", description = "删除本机构未发布或已下架的课程及其关联记录")
-    @DeleteMapping("/course/{id}")
+    @DeleteMapping("/{id}")
     public void deleteCourse(@PathVariable Long id) {
         courseBaseInfoService.deleteCourse(companyId, id);
     }

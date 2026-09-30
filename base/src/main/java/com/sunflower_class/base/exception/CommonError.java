@@ -18,7 +18,6 @@ public enum CommonError {
 
     /**
      * 构造函数
-     * @param message 错误描述信息
      */
     private CommonError(String message) {
         this.message = message;
@@ -26,7 +25,6 @@ public enum CommonError {
 
     /**
      * 获取错误描述信息
-     * @return 错误描述信息
      */
     public String getMessage() {
         return message;
@@ -34,8 +32,6 @@ public enum CommonError {
 
     /**
      * 根据枚举名称获取错误信息（忽略大小写）
-     * @param name 枚举名称
-     * @return 错误信息，如果未找到则返回null
      */
     public static String getMessageByName(String name) {
         try {

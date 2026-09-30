@@ -1,8 +1,9 @@
 package com.sunflower_class.model.dto;
 
+import java.math.BigDecimal;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
-import java.math.BigDecimal;
 import lombok.Data;
 
 /**

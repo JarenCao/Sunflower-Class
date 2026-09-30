@@ -1,11 +1,13 @@
 package com.sunflower_class.base.config;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
 import java.text.SimpleDateFormat;
 import java.util.TimeZone;
+
 import org.springframework.boot.jackson.autoconfigure.JsonMapperBuilderCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
 
 /**
  * 统一服务响应的 JSON 日期、时区与空值输出规则。
@@ -21,8 +23,8 @@ public class JacksonConfig {
      */
     private JsonInclude.Value applyNonNullInclusion(JsonInclude.Value incl) {
         return incl
-            .withValueInclusion(JsonInclude.Include.NON_NULL)
-            .withContentInclusion(JsonInclude.Include.NON_NULL);
+                .withValueInclusion(JsonInclude.Include.NON_NULL)
+                .withContentInclusion(JsonInclude.Include.NON_NULL);
     }
 
     /**
@@ -31,8 +33,7 @@ public class JacksonConfig {
     @Bean
     public JsonMapperBuilderCustomizer jacksonCustomizer() {
         // Spring 调用此回调，将统一日期、时区和空值规则应用到映射器构建器。
-        return builder ->
-            builder
+        return builder -> builder
                 .defaultDateFormat(new SimpleDateFormat(DATE_TIME_PATTERN))
                 .defaultTimeZone(TimeZone.getTimeZone(TIMEZONE))
                 .changeDefaultPropertyInclusion(this::applyNonNullInclusion);

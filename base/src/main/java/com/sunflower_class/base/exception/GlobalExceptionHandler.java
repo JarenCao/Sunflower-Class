@@ -1,7 +1,7 @@
 package com.sunflower_class.base.exception;
 
 import java.util.stream.Collectors;
-import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -9,6 +9,8 @@ import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
+
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 集中处理业务异常、未分类异常与请求校验错误，生成统一错误响应。
@@ -49,11 +51,11 @@ public class GlobalExceptionHandler {
     public RestErrorResponse methodArgumentNotValidException(MethodArgumentNotValidException e) {
         BindingResult bindingResult = e.getBindingResult();
         String errMessage = bindingResult
-            .getAllErrors()
-            .stream()
-            // 从每个校验错误中提取默认提示，随后用逗号合并。
-            .map(item -> item.getDefaultMessage())
-            .collect(Collectors.joining(","));
+                .getAllErrors()
+                .stream()
+                // 从每个校验错误中提取默认提示，随后用逗号合并。
+                .map(item -> item.getDefaultMessage())
+                .collect(Collectors.joining(","));
 
         log.error("【系统异常】{}", errMessage);
         return new RestErrorResponse(errMessage);

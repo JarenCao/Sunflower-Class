@@ -32,13 +32,10 @@ public class FFmpegConfig {
     /** 视频编码器 */
     private String videoCodec = "libx264";
 
-    /** 视频质量 (0-51, 越小质量越高) */
+    /** 视频质量 */
     private Integer crf = 18;
 
-    /**
-     * 编码速度预设: ultrafast, superfast, veryfast, faster, fast, medium, slow, slower,
-     * veryslow
-     */
+    /** 编码速度 */
     private String preset = "fast";
 
     /** 音频编码器 */
@@ -50,6 +47,6 @@ public class FFmpegConfig {
     /** 像素格式 */
     private String pixFormat = "yuv420p";
 
-    /** 是否启用快速启动（流媒体优化） */
+    /** 是否启用快速启动*/
     private Boolean fastStart = true;
 }
