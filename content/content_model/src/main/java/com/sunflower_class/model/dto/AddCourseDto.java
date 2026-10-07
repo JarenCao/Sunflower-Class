@@ -1,9 +1,8 @@
 package com.sunflower_class.model.dto;
 
-import java.math.BigDecimal;
-
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
+import java.math.BigDecimal;
 import lombok.Data;
 
 /**
@@ -13,7 +12,11 @@ import lombok.Data;
 @Schema(description = "新增课程信息")
 public class AddCourseDto {
 
-    @Schema(description = "课程名称", example = "Java从入门到精通")
+    @Schema(
+        description = "课程名称",
+        example = "Java从入门到精通",
+        requiredMode = Schema.RequiredMode.REQUIRED
+    )
     @NotBlank(message = "课程名称不能为空")
     private String name;
 

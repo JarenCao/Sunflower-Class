@@ -1,7 +1,16 @@
 package com.sunflower_class.api;
 
+import com.sunflower_class.base.model.RestResponse;
+import com.sunflower_class.model.dto.AddTeachPlanDto;
+import com.sunflower_class.model.dto.BindTeachplanMediaDto;
+import com.sunflower_class.model.dto.TeachPlanDto;
+import com.sunflower_class.service.content.service.AssociationMediaService;
+import com.sunflower_class.service.content.service.TeachPlanService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import java.util.List;
-
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -12,18 +21,6 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-
-import com.sunflower_class.base.model.RestResponse;
-import com.sunflower_class.model.dto.AddTeachPlanDto;
-import com.sunflower_class.model.dto.BindTeachplanMediaDto;
-import com.sunflower_class.model.dto.TeachPlanDto;
-import com.sunflower_class.service.content.service.AssociationMediaService;
-import com.sunflower_class.service.content.service.TeachPlanService;
-
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.validation.Valid;
-import lombok.extern.slf4j.Slf4j;
 
 /**
  * 教学计划编排接口，提供目录查询、保存、删除、同级排序与媒资绑定。
@@ -78,7 +75,8 @@ public class TeachPlanController {
     @Operation(summary = "绑定课程计划与媒资文件")
     @PostMapping("/teachplan/media/bind")
     public RestResponse bindTeachplanMedia(
-            @RequestBody BindTeachplanMediaDto bindTeachplanMediaDto) {
+        @RequestBody BindTeachplanMediaDto bindTeachplanMediaDto
+    ) {
         associationMediaService.associationMedia(bindTeachplanMediaDto);
         return RestResponse.success();
     }

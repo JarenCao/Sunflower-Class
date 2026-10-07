@@ -45,4 +45,34 @@ public interface CourseBaseMapper extends BaseMapper<CourseBase> {
             "OR teachplan_id IN (SELECT id FROM teachplan WHERE course_id = #{courseId})"
     )
     int deleteTeachplanWork(@Param("courseId") Long courseId);
+
+    /** 全局媒资绑定数量；查询失败直接返回错误。 */
+    @Select("SELECT COUNT(*) FROM teachplan_media WHERE media_id=#{id}")
+    long countMediaBindings(@Param("id") String id);
+
+    /** 封面保持原路径和资源地址匹配规则。 */
+    @Select(
+        "SELECT (SELECT COUNT(*) FROM course_base WHERE pic LIKE #{pattern} OR (pic=#{url} AND #{url}<>'')) + (SELECT COUNT(*) FROM course_teacher WHERE photograph LIKE #{pattern} OR (photograph=#{url} AND #{url}<>''))"
+    )
+    long countMediaCovers(@Param("pattern") String pattern, @Param("url") String url);
+
+    /** 已发布快照中的目录和封面共同阻止误删。 */
+    @Select(
+        "SELECT COUNT(*) FROM course_publish WHERE status='30502' AND ((JSON_VALID(teachplan) AND JSON_SEARCH(teachplan,'one',#{id}) IS NOT NULL) OR pic LIKE #{pattern} OR (pic=#{url} AND #{url}<>'') OR (JSON_VALID(teachers) AND (JSON_SEARCH(teachers,'one',#{pattern}) IS NOT NULL OR (#{url}<>'' AND JSON_SEARCH(teachers,'one',#{url}) IS NOT NULL))))"
+    )
+    long countPublishedMediaReferences(
+        @Param("id") String id,
+        @Param("pattern") String pattern,
+        @Param("url") String url
+    );
+
+    /** 待审核或审核通过的快照保留原资源引用。 */
+    @Select(
+        "SELECT COUNT(*) FROM course_publish_pre WHERE status IN ('30403','30404') AND ((JSON_VALID(teachplan) AND JSON_SEARCH(teachplan,'one',#{id}) IS NOT NULL) OR pic LIKE #{pattern} OR (pic=#{url} AND #{url}<>'') OR (JSON_VALID(teachers) AND (JSON_SEARCH(teachers,'one',#{pattern}) IS NOT NULL OR (#{url}<>'' AND JSON_SEARCH(teachers,'one',#{url}) IS NOT NULL))))"
+    )
+    long countAuditMediaReferences(
+        @Param("id") String id,
+        @Param("pattern") String pattern,
+        @Param("url") String url
+    );
 }

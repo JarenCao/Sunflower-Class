@@ -1,10 +1,22 @@
 package com.sunflower_class.service.content.service.impl;
 
-import static com.sunflower_class.base.model.BusinessCodes.*;
+import static com.sunflower_class.base.model.BusinessCodes.AUDIT_APPROVED;
+import static com.sunflower_class.base.model.BusinessCodes.AUDIT_DRAFT;
+import static com.sunflower_class.base.model.BusinessCodes.AUDIT_PENDING;
+import static com.sunflower_class.base.model.BusinessCodes.AUDIT_REJECTED;
+import static com.sunflower_class.base.model.BusinessCodes.CHARGE_FREE;
+import static com.sunflower_class.base.model.BusinessCodes.CHARGE_PAID;
+import static com.sunflower_class.base.model.BusinessCodes.COURSE_DRAFT;
+import static com.sunflower_class.base.model.BusinessCodes.COURSE_OFFLINE;
+import static com.sunflower_class.base.model.BusinessCodes.COURSE_PUBLISHED;
 
 import com.alibaba.fastjson.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.sunflower_class.base.exception.GlobalException;
+import com.sunflower_class.base.model.PageParams;
+import com.sunflower_class.base.model.PageResult;
+import com.sunflower_class.base.security.CurrentUser;
 import com.sunflower_class.model.dto.CourseBaseInfoDto;
 import com.sunflower_class.model.dto.TeachPlanDto;
 import com.sunflower_class.model.po.CourseBase;
@@ -26,12 +38,15 @@ import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * 维护审核快照和正式发布快照；正式发布时在同一事务保存待发送消息。
@@ -155,6 +170,10 @@ public class CoursePublishServiceImpl implements CoursePublishService {
         String courseMarketJson = JSON.toJSONString(courseMarket);
         coursePublishPre.setMarket(courseMarketJson);
 
+        // 师资在提审时冻结，平台管理员审核提交快照，学员读取正式发布快照。
+        coursePublishPre.setTeachers(
+            JSON.toJSONString(courseBaseInfoService.listCourseTeachers(courseId))
+        );
         coursePublishPre.setCompanyId(companyId);
         coursePublishPre.setCreateDate(LocalDateTime.now());
         coursePublishPre.setStatus(AUDIT_PENDING);
@@ -182,14 +201,10 @@ public class CoursePublishServiceImpl implements CoursePublishService {
     /** 锁定课程并核对待审快照，同一事务保存审核结论与操作记录。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void reviewCourse(
-        Long companyId,
-        Long courseId,
-        boolean approved,
-        String reason,
-        String reviewer
-    ) {
-        if (companyId == null || courseId == null || courseId <= 0) {
+    public void reviewCourse(Long courseId, boolean approved, String reason) {
+        CurrentUser.requireRole("admin");
+        String reviewer = CurrentUser.jwt().getClaimAsString("name");
+        if (courseId == null || courseId <= 0) {
             GlobalException.cast("课程或机构编号无效");
         }
         String opinion = reason == null ? "" : reason.trim();
@@ -205,7 +220,6 @@ public class CoursePublishServiceImpl implements CoursePublishService {
             new LambdaQueryWrapper<CourseBase>().eq(CourseBase::getId, courseId).last("FOR UPDATE")
         );
         if (course == null) GlobalException.cast("课程不存在");
-        if (!companyId.equals(course.getCompanyId())) GlobalException.cast("不能审核非本机构课程");
         if (!AUDIT_PENDING.equals(course.getAuditStatus())) {
             GlobalException.cast("只有审核中的课程可以审核");
         }
@@ -218,7 +232,7 @@ public class CoursePublishServiceImpl implements CoursePublishService {
         CoursePublishPre pending = coursePublishPreMapper.selectById(courseId);
         if (
             pending == null ||
-            !companyId.equals(pending.getCompanyId()) ||
+            !Objects.equals(course.getCompanyId(), pending.getCompanyId()) ||
             !AUDIT_PENDING.equals(pending.getStatus())
         ) {
             GlobalException.cast("课程待审快照不存在或状态不一致");
@@ -248,14 +262,74 @@ public class CoursePublishServiceImpl implements CoursePublishService {
     /** 仅允许读取配置机构所属课程的审核历史。 */
     @Override
     public List<Map<String, Object>> auditHistory(Long companyId, Long courseId) {
-        if (companyId == null || courseId == null || courseId <= 0) {
+        boolean reviewer = "admin".equals(CurrentUser.jwt().getClaimAsString("role"));
+        if (!reviewer) companyId = CurrentUser.companyId();
+        if (courseId == null || courseId <= 0) {
             GlobalException.cast("课程或机构编号无效");
         }
         CourseBase course = courseBaseMapper.selectById(courseId);
-        if (course == null || !companyId.equals(course.getCompanyId())) {
+        if (course == null || (!reviewer && !companyId.equals(course.getCompanyId()))) {
             GlobalException.cast("课程不存在或无权限查看审核记录");
         }
         return courseBaseMapper.selectCourseAuditHistory(courseId);
+    }
+
+    /** 审核队列不限制机构；复用现有实体、分页和营销数据。 */
+    @Override
+    public PageResult<CourseBaseInfoDto> auditQueue(PageParams params, String status) {
+        CurrentUser.requireRole("admin");
+        if (!Set.of(AUDIT_PENDING, AUDIT_APPROVED, AUDIT_REJECTED).contains(status)) {
+            GlobalException.cast("审核状态无效");
+        }
+        Page<CourseBase> page = courseBaseMapper.selectPage(
+            new Page<CourseBase>(
+                Math.max(1, params.getPageNo()),
+                Math.min(100, Math.max(1, params.getPageSize()))
+            ),
+            new LambdaQueryWrapper<CourseBase>()
+                .eq(CourseBase::getAuditStatus, status)
+                // 旧数据可能只标记审核中而没有提交记录；队列只提供可读取的完整快照。
+                .and(query ->
+                    query
+                        .exists(
+                            "SELECT 1 FROM course_publish_pre p WHERE p.id=course_base.id AND p.company_id=course_base.company_id AND p.status=course_base.audit_status"
+                        )
+                        .or()
+                        .exists(
+                            "SELECT 1 FROM course_publish p WHERE p.id=course_base.id AND p.company_id=course_base.company_id AND course_base.audit_status='30404'"
+                        )
+                )
+                .orderByDesc(CourseBase::getChangeDate)
+        );
+        List<CourseBaseInfoDto> items = page
+            .getRecords()
+            .stream()
+            .map(course -> {
+                CourseBaseInfoDto dto = new CourseBaseInfoDto();
+                BeanUtils.copyProperties(course, dto);
+                CourseMarket market = courseMarketMapper.selectById(course.getId());
+                if (market != null) BeanUtils.copyProperties(market, dto);
+                return dto;
+            })
+            .toList();
+        return new PageResult<>(items, page.getTotal(), page.getCurrent(), page.getSize());
+    }
+
+    /** 审核读取提交快照，已发布课程复用正式快照，不暴露机构编辑能力。 */
+    @Override
+    public CoursePublishPre auditDetail(Long courseId) {
+        CurrentUser.requireRole("admin");
+        CoursePublishPre snapshot = coursePublishPreMapper.selectById(courseId);
+        if (snapshot != null) return snapshot;
+        CoursePublish published = coursePublishMapper.selectById(courseId);
+        if (published == null) throw new ResponseStatusException(
+            HttpStatus.NOT_FOUND,
+            "课程审核快照不存在"
+        );
+        snapshot = new CoursePublishPre();
+        BeanUtils.copyProperties(published, snapshot);
+        snapshot.setStatus(AUDIT_APPROVED);
+        return snapshot;
     }
 
     /** 校验课程及审核快照后发布；已成功发布的相同请求直接返回，不重复写入记录。 */
@@ -520,5 +594,71 @@ public class CoursePublishServiceImpl implements CoursePublishService {
         // 下架也必须通知下游，防止搜索与学习目录继续展示已下架课程。
         saveCoursePublishMessage(courseId);
         log.info("课程下架完成，课程ID：{}，机构ID：{}", courseId, companyId);
+    }
+
+    /** 复用原发布快照查询，接口层不访问 Mapper。 */
+    @Override
+    public boolean isPublishedCover(String mediaId) {
+        if (!mediaId.matches("[a-fA-F0-9]{32}")) return false;
+        return (
+            coursePublishMapper.selectCount(
+                new LambdaQueryWrapper<CoursePublish>()
+                    .eq(CoursePublish::getStatus, COURSE_PUBLISHED)
+                    .eq(CoursePublish::getPic, "/api/media/files/" + mediaId + "/content")
+            ) > 0
+        );
+    }
+
+    /** 复用原发布快照查询，接口层不访问 Mapper。 */
+    @Override
+    public PageResult<CoursePublish> publishedCourses(long pageNo, long pageSize, String q) {
+        LambdaQueryWrapper<CoursePublish> query = new LambdaQueryWrapper<CoursePublish>()
+            .eq(CoursePublish::getStatus, COURSE_PUBLISHED)
+            .like(!q.isBlank(), CoursePublish::getName, q)
+            .orderByDesc(CoursePublish::getOnlineDate);
+        Page<CoursePublish> page = coursePublishMapper.selectPage(
+            new Page<>(Math.max(1, pageNo), Math.min(100, Math.max(1, pageSize))),
+            query
+        );
+        return new PageResult<>(
+            page.getRecords(),
+            page.getTotal(),
+            page.getCurrent(),
+            page.getSize()
+        );
+    }
+
+    /** 复用原发布快照查询，接口层不访问 Mapper。 */
+    @Override
+    public CoursePublish publishedCourse(Long id) {
+        CoursePublish course = coursePublishMapper.selectById(id);
+        if (course == null || !COURSE_PUBLISHED.equals(course.getStatus())) GlobalException.cast(
+            "课程未发布或不存在"
+        );
+        return course;
+    }
+
+    /** 发布消息按机构归属筛选，返回前继续隐藏完整课程快照。 */
+    @Override
+    public List<MqMessage> publicationMessages(Long companyId, long courseId) {
+        List<MqMessage> items = mqMessageMapper.selectList(
+            new LambdaQueryWrapper<MqMessage>()
+                .eq(MqMessage::getMessageType, "course_publish")
+                .isNotNull(MqMessage::getPayload)
+                .eq(MqMessage::getBusinessKey1, Long.toString(courseId))
+                .eq(MqMessage::getBusinessKey2, companyId.toString())
+                .orderByDesc(MqMessage::getId)
+                .last("LIMIT 10")
+        );
+        items.forEach(item -> item.setPayload(null));
+        return items;
+    }
+
+    /** 只恢复原机构的未完成消息，保留原重试条件。 */
+    @Override
+    public void retryPublicationMessage(Long companyId, long id) {
+        if (mqMessageMapper.retry(id, companyId.toString()) != 1) GlobalException.cast(
+            "消息已完成、不存在或不属于本机构"
+        );
     }
 }

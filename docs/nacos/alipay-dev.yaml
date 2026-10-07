@@ -1,0 +1,9 @@
+# namespace: dev，group: common；本次只接支付宝沙箱。
+sunflower:
+  alipay:
+    gateway: https://openapi-sandbox.dl.alipaydev.com/gateway.do
+    app-id: ${ALIPAY_APP_ID:}
+    private-key: ${ALIPAY_PRIVATE_KEY:}
+    public-key: ${ALIPAY_PUBLIC_KEY:}
+    seller-id: ${ALIPAY_SELLER_ID:}
+    notify-url: ${ALIPAY_NOTIFY_URL:}

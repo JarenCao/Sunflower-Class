@@ -1,9 +1,8 @@
 package com.sunflower_class.base.config;
 
+import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
-
-import lombok.Data;
 
 /**
  * FFmpeg 转码配置：描述 WSL 发行版、容器镜像、挂载目录和音视频编码参数。

@@ -1,0 +1,19 @@
+# namespace: dev，group: sunflower_class
+spring:
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/media?serverTimezone=Asia/Shanghai&useUnicode=true&characterEncoding=utf8&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USER}
+    password: ${MYSQL_PASSWORD}
+
+minio:
+  endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+  access-key: ${MINIO_ROOT_USER}
+  secret-key: ${MINIO_ROOT_PASSWORD}
+  files: mediafiles
+  videofiles: video
+ffmpeg:
+  image: linuxserver/ffmpeg:6.1.1
+  wsl-distro: ${FFMPEG_WSL_DISTRO:Ubuntu-24.04}
+  host-data-dir: /tmp/xiaokuihua-ffmpeg
+  container-data-dir: /data
+  timeout-minutes: 30

@@ -1,9 +1,17 @@
 <!-- 媒资中心：分页查询素材、上传文件并轮询当前页视频的处理状态。 -->
 <script setup lang="ts">
+import { errorMessage } from '../../../frontend-shared/error-message'
 import { PAGE_SIZE } from '../api'
 import { onMounted, onUnmounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
-import { listMedia, uploadMedia } from '../api'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import {
+  listMedia,
+  uploadMedia,
+  getMediaProcess,
+  retryMediaProcess,
+  getMediaReferences,
+  deleteMedia,
+} from '../api'
 import type { MediaFile } from '../types'
 
 const percent = ref(0)
@@ -16,6 +24,56 @@ const rows = ref<MediaFile[]>([])
 const search = ref('')
 const uploading = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
+const deleting = ref<string | null>(null)
+/** 显示真实引用并二次确认；清理失败保留删除记录，允许重试。 */
+async function remove(row: MediaFile) {
+  if (deleting.value) return
+  try {
+    if (row.status !== '20305') {
+      const refs = await getMediaReferences(row.id)
+      if (Object.values(refs).some((count) => count > 0)) {
+        await ElMessageBox.alert(
+          `教学计划 ${refs.bindings} 处，封面 ${refs.covers} 处，发布 ${refs.published} 处，审核 ${refs.audit} 处。请先解除引用。`,
+          '文件正在使用',
+        )
+        return
+      }
+    }
+    await ElMessageBox.confirm(
+      `确认${row.status === '20305' ? '重试清理' : '删除'}“${row.filename}”？将取消任务并清理原文件与转码文件。`,
+      '删除媒资',
+      { type: 'warning' },
+    )
+    deleting.value = row.id
+    const status = await deleteMedia(row.id)
+    ElMessage.success(status === 204 ? '媒资已删除' : '正在取消转码，请稍后重试清理')
+    await refresh()
+  } catch (error: any) {
+    if (error !== 'cancel' && error !== 'close') {
+      ElMessage.error(errorMessage(error, '清理失败，请重试'))
+      await refresh()
+    }
+  } finally {
+    deleting.value = null
+  }
+}
+/** 查看实际错误后显式确认重试，达到上限的失败任务仍保留在列表。 */
+async function retry(row: MediaFile) {
+  try {
+    const task = await getMediaProcess(row.id)
+    await ElMessageBox.confirm(
+      `失败次数：${task.failCount}；原因：${errorMessage(task.error, '视频处理失败，请检查视频格式或联系管理员')}。是否重新开启有限重试？`,
+      '重新处理',
+      { type: 'warning' },
+    )
+    await retryMediaProcess(row.id)
+    ElMessage.success('已安排重新处理')
+    await refresh()
+  } catch (error: any) {
+    if (error !== 'cancel' && error !== 'close')
+      ElMessage.error(errorMessage(error, '重试失败，请稍后重试'))
+  }
+}
 // 搜索条件变化后从第一页重新查询。
 function searchFromFirstPage() {
   page.value = 1
@@ -29,7 +87,7 @@ async function refresh() {
     rows.value = result.items
     count.value = result.count
   } catch (error) {
-    ElMessage.error((error as Error).message)
+    ElMessage.error(errorMessage(error))
   }
 }
 // 每次选文件创建独立上传任务，进度回调同时更新百分比和处理阶段。
@@ -52,7 +110,7 @@ async function onFile(event: Event) {
     ElMessage.success('文件已保存到服务器')
     await refresh()
   } catch (error) {
-    ElMessage.error((error as Error).message)
+    ElMessage.error(errorMessage(error))
   } finally {
     uploading.value = false
     // 清空文件选择框，使用户可以再次选择同一文件继续上传。
@@ -176,17 +234,19 @@ onUnmounted(() => {
             :class="row.status === '20302' ? 'pill-green' : 'pill-blue'"
           >
             {{
-              row.status === '20300'
-                ? '已隐藏'
-                : row.status === '20303'
-                  ? '处理失败'
-                  : row.status === '20304'
-                    ? '正在转码'
-                    : row.status === '20302'
-                      ? row.fileType === '20102'
-                        ? '转码完成'
-                        : '已上传'
-                      : '等待处理'
+              row.status === '20305'
+                ? '删除中/待清理'
+                : row.status === '20300'
+                  ? '已隐藏'
+                  : row.status === '20303'
+                    ? '处理失败'
+                    : row.status === '20304'
+                      ? '正在转码'
+                      : row.status === '20302'
+                        ? row.fileType === '20102'
+                          ? '转码完成'
+                          : '已上传'
+                        : '等待处理'
             }}
           </span>
         </template>
@@ -216,6 +276,38 @@ onUnmounted(() => {
           >
             打开文件
           </a>
+        </template>
+      </el-table-column>
+      <el-table-column
+        label="任务操作"
+        width="130"
+      >
+        <template #default="{ row }">
+          <el-button
+            v-if="row.status === '20303' && row.fileType === '20102'"
+            type="primary"
+            link
+            @click="retry(row)"
+          >
+            查看原因/重试
+          </el-button>
+        </template>
+      </el-table-column>
+      <el-table-column
+        label="删除"
+        width="140"
+      >
+        <template #default="{ row }">
+          <el-button
+            type="danger"
+            link
+            :loading="deleting === row.id"
+            :disabled="!!deleting && deleting !== row.id"
+            @click="remove(row)"
+          >
+            {{ row.status === '20305' ? '重试清理' : '删除' }}
+          </el-button>
+          <small v-if="row.deleteError">{{ row.deleteError }}</small>
         </template>
       </el-table-column>
     </el-table>

@@ -2,7 +2,6 @@ package com.sunflower_class.base.model;
 
 import java.io.Serializable;
 import java.util.List;
-
 import lombok.Data;
 
 /**

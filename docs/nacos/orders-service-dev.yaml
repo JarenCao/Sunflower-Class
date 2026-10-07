@@ -1,0 +1,9 @@
+# namespace: dev，group: sunflower_class；密码由本机外部配置提供。
+spring:
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/orders?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true&useUnicode=true&characterEncoding=utf8&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USER}
+    password: ${MYSQL_PASSWORD}
+sunflower:
+  learning:
+    endpoint: ${LEARNING_ENDPOINT:http://localhost:63070/learning}

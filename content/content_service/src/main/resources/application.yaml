@@ -5,8 +5,8 @@ spring:
     active: dev
   config:
     import:
-      - "nacos:content-service-dev.yaml?group=sunflower_class"
-      - "nacos:logging-dev.yaml?group=common"
+      - 'nacos:content-service-dev.yaml?group=sunflower_class'
+      - 'nacos:logging-dev.yaml?group=common'
   cloud:
     nacos:
       config:

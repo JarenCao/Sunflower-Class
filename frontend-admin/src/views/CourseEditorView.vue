@@ -1,10 +1,14 @@
 <!-- 课程编辑：依次完成基础及营销信息、章节编排和媒资绑定；新课程先保存再编排。 -->
 <script setup lang="ts">
+import { errorMessage } from '../../../frontend-shared/error-message'
 import { PAGE_SIZE } from '../api'
-import { computed, onUnmounted, watch, ref } from 'vue'
+import { computed, nextTick, onUnmounted, watch, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
+  listCourseTeachers,
+  saveCourseTeacher,
+  deleteCourseTeacher,
   addTeachplan,
   bindMedia,
   deleteTeachplan,
@@ -16,13 +20,91 @@ import {
   saveCourse,
   uploadMedia,
 } from '../api'
-import type { Category, CourseInput, MediaFile, Teachplan } from '../types'
+import type {
+  Category,
+  CourseInput,
+  CourseTeacher,
+  CourseTeacherInput,
+  MediaFile,
+  Teachplan,
+} from '../types'
 
 const route = useRoute()
 const router = useRouter()
 // 同一组件承载新建和编辑页面：new 转成 0，已保存课程使用实际编号。
 const id = computed(() => (route.params.id === 'new' ? 0 : Number(route.params.id)))
 const activeTab = ref('info')
+const teachers = ref<CourseTeacher[]>([])
+const teacherId = ref<number>()
+const teacherOpen = ref(false)
+const teacherSaving = ref(false)
+const teacherInput = ref<CourseTeacherInput>({
+  teacherName: '',
+  position: '',
+  introduction: '',
+  photograph: '',
+})
+// 师资介绍不创建登录账号；编辑后读取服务端审核状态。
+function editTeacher(teacher?: CourseTeacher) {
+  teacherId.value = teacher?.id
+  teacherInput.value = teacher
+    ? { ...teacher }
+    : { teacherName: '', position: '', introduction: '', photograph: '' }
+  teacherOpen.value = true
+}
+async function refreshTeachers() {
+  const courseId = id.value
+  const result = await listCourseTeachers(courseId)
+  if (id.value === courseId) teachers.value = result
+}
+async function saveTeacher() {
+  if (!canEdit.value || teacherSaving.value) return
+  if (!teacherInput.value.teacherName.trim() || !teacherInput.value.introduction.trim())
+    return ElMessage.warning('请填写讲师姓名和介绍')
+  teacherSaving.value = true
+  try {
+    await saveCourseTeacher(id.value, teacherInput.value, teacherId.value)
+    teacherOpen.value = false
+    await refreshTeachers()
+    await refreshCourseStatus()
+    ElMessage.success('讲师介绍已保存')
+  } catch (error) {
+    ElMessage.error(errorMessage(error))
+  } finally {
+    teacherSaving.value = false
+  }
+}
+async function removeTeacher(teacher: CourseTeacher) {
+  if (!canEdit.value) return
+  try {
+    await ElMessageBox.confirm(`删除讲师“${teacher.teacherName}”的课程介绍？`, '删除课程讲师', {
+      type: 'warning',
+    })
+  } catch {
+    return
+  }
+  try {
+    await deleteCourseTeacher(id.value, teacher.id)
+    await refreshTeachers()
+    await refreshCourseStatus()
+    ElMessage.success('讲师介绍已删除')
+  } catch (error) {
+    ElMessage.error(errorMessage(error))
+  }
+}
+async function teacherPhoto(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file || !canEdit.value) return
+  try {
+    const uploaded = await uploadMedia(file)
+    if (uploaded) teacherInput.value.photograph = `/api/media/files/${uploaded.id}/content`
+  } catch (error) {
+    ElMessage.error(errorMessage(error))
+  } finally {
+    input.value = ''
+  }
+}
 const saving = ref(false)
 const planActionId = ref<number | null>(null)
 const courseStatus = ref('30501')
@@ -63,6 +145,7 @@ const emptyForm: CourseInput = {
   charge: '30201',
   price: 0,
   originalPrice: 0,
+  validDays: 0,
 }
 const form = ref<CourseInput>({ ...emptyForm })
 const mediaPage = ref(1)
@@ -76,7 +159,7 @@ async function refreshMedia() {
     selectedMedia.value = ''
     return true
   } catch (error) {
-    ElMessage.error((error as Error).message)
+    ElMessage.error(errorMessage(error))
     return false
   }
 }
@@ -113,7 +196,7 @@ async function uploadCourseMedia(event: Event) {
     }
   } catch (error) {
     if ((error as Error).name === 'AbortError') ElMessage.info('已停止上传')
-    else ElMessage.error((error as Error).message)
+    else ElMessage.error(errorMessage(error))
   } finally {
     mediaUploading.value = false
     mediaUploadAbort = undefined
@@ -165,6 +248,8 @@ watch(
     courseLoaded.value = false
     courseStatus.value = '30501'
     courseAuditStatus.value = '30402'
+    teachers.value = []
+    teacherOpen.value = false
     plans.value = []
     planName.value = ''
     planParent.value = 0
@@ -179,7 +264,7 @@ watch(
       if (expired) return
       categories.value = categoryResult
       if (courseId) {
-        // 教学计划独立读取，不能因旧课程缺少营销信息而误显示为空。
+        // 教学计划独立读取，避免基础信息加载失败时误显示为空目录。
         const coursePlans = await getTeachplan(courseId)
         if (expired) return
         plans.value = coursePlans
@@ -190,10 +275,11 @@ watch(
         courseStatus.value = course.status
         courseAuditStatus.value = course.auditStatus
         courseLoaded.value = true
+        await refreshTeachers()
         await refreshMedia()
       }
     } catch (error) {
-      if (!expired) ElMessage.error((error as Error).message)
+      if (!expired) ElMessage.error(errorMessage(error))
     } finally {
       if (!expired) plansLoading.value = false
     }
@@ -202,18 +288,26 @@ watch(
 )
 // 先校验名称，再保存完整表单；新建成功后切换到实际课程编号对应的编辑页。
 async function save() {
-  if (!canEdit.value) return
+  if (!canEdit.value || saving.value) return
   if (!form.value.name.trim()) return ElMessage.warning('请填写课程名称')
   saving.value = true
+  const creating = !id.value
   try {
     const result = await saveCourse(form.value)
     form.value = result
     courseStatus.value = result.status
     courseAuditStatus.value = result.auditStatus
-    ElMessage.success('课程信息已保存')
-    if (!id.value) router.replace(`/courses/${result.id}`)
+    if (creating) {
+      // 先取得草稿编号才能关联教学计划；保存不会触发提交审核或发布。
+      await router.replace(`/courses/${result.id}`)
+      await nextTick()
+      activeTab.value = 'plan'
+      ElMessage.success('草稿已保存，请继续添加教学计划和媒资，完成后再提交审核')
+    } else {
+      ElMessage.success('基本信息已保存；完善教学计划和媒资后再提交审核')
+    }
   } catch (error) {
-    ElMessage.error((error as Error).message)
+    ElMessage.error(errorMessage(error))
   } finally {
     saving.value = false
   }
@@ -230,7 +324,7 @@ async function addPlan() {
     await refreshCourseStatus()
     ElMessage.success('教学计划已保存')
   } catch (error) {
-    ElMessage.error((error as Error).message)
+    ElMessage.error(errorMessage(error))
   } finally {
     planSaving.value = false
   }
@@ -248,7 +342,7 @@ async function bind() {
     selectedMedia.value = ''
     bindPlanId.value = null
   } catch (error) {
-    ElMessage.error((error as Error).message)
+    ElMessage.error(errorMessage(error))
   }
 }
 // 修改名称沿用计划保存接口；保留原有父节点，避免改变目录层级。
@@ -259,14 +353,41 @@ async function rename(plan: Teachplan) {
       inputPattern: /\S/,
       inputErrorMessage: '名称不能为空',
     })
-    await addTeachplan(id.value, result.value.trim(), plan.parentid || 0, plan.id)
+    await addTeachplan(
+      id.value,
+      result.value.trim(),
+      plan.parentid || plan.parentId || 0,
+      plan.id,
+      plan.isPreview || '0',
+    )
     await refreshPlans()
     await refreshCourseStatus()
   } catch (error) {
-    if (error instanceof Error) ElMessage.error(error.message)
+    if (error instanceof Error) ElMessage.error(errorMessage(error))
   }
 }
 
+// 试学设置与目录编辑共用保存接口，必须重新审核发布后才对学员生效。
+async function toggleTrial(plan: Teachplan) {
+  if (!canEdit.value || planActionId.value !== null) return
+  planActionId.value = plan.id
+  try {
+    await addTeachplan(
+      id.value,
+      plan.pname,
+      plan.parentid || plan.parentId || 0,
+      plan.id,
+      plan.isPreview === '1' ? '0' : '1',
+    )
+    await refreshPlans()
+    await refreshCourseStatus()
+    ElMessage.success('试学设置已保存，审核发布后生效')
+  } catch (error) {
+    ElMessage.error(errorMessage(error))
+  } finally {
+    planActionId.value = null
+  }
+}
 // 删除前明确说明章会连同所有小节及关联一起删除；取消时保持页面原状。
 async function removePlan(plan: Teachplan) {
   try {
@@ -287,7 +408,7 @@ async function removePlan(plan: Teachplan) {
     await refreshCourseStatus()
     ElMessage.success('教学计划已删除')
   } catch (error) {
-    ElMessage.error((error as Error).message)
+    ElMessage.error(errorMessage(error))
   } finally {
     planActionId.value = null
   }
@@ -301,7 +422,7 @@ async function movePlan(plan: Teachplan, direction: 'up' | 'down') {
     await refreshPlans()
     await refreshCourseStatus()
   } catch (error) {
-    ElMessage.error((error as Error).message)
+    ElMessage.error(errorMessage(error))
   } finally {
     planActionId.value = null
   }
@@ -318,7 +439,7 @@ async function cover(event: Event) {
       ElMessage.success('封面已上传，请保存课程')
     }
   } catch (error) {
-    ElMessage.error((error as Error).message)
+    ElMessage.error(errorMessage(error))
   }
 }
 // 将两级目录展开为选择列表，同时保留章和小节各自的数据。
@@ -363,6 +484,84 @@ const flatPlans = computed(() => plans.value.flatMap((p) => [p, ...(p.teachPlanT
         >
           03 关联媒资
         </button>
+        <button
+          :class="{ selected: activeTab === 'teachers' }"
+          :disabled="!id"
+          @click="activeTab = 'teachers'"
+        >
+          04 课程师资
+        </button>
+      </div>
+      <div
+        v-if="id && courseLoaded && courseAuditStatus === '30402'"
+        class="notice-strip"
+      >
+        当前课程为未提交草稿，可以继续添加教学计划、媒资和讲师。完善后再到课程列表提交审核。
+      </div>
+      <div
+        v-if="activeTab === 'teachers'"
+        class="editor-body"
+      >
+        <div class="form-intro">
+          <h2>课程师资</h2>
+          <p>维护本课程讲师的姓名、职位和授课经历。</p>
+        </div>
+        <p
+          v-if="!canEdit"
+          class="notice-strip"
+        >
+          课程已发布或审核中，暂不能修改师资。
+        </p>
+        <p
+          v-else-if="courseAuditStatus === '30404'"
+          class="notice-strip"
+        >
+          修改师资后需重新提交审核。
+        </p>
+        <el-button
+          type="primary"
+          :disabled="!canEdit"
+          @click="editTeacher()"
+        >
+          添加讲师
+        </el-button>
+        <el-table
+          :data="teachers"
+          empty-text="尚未添加课程讲师"
+        >
+          <el-table-column
+            prop="teacherName"
+            label="姓名"
+          />
+          <el-table-column
+            prop="position"
+            label="职位"
+          />
+          <el-table-column
+            prop="introduction"
+            label="介绍"
+            show-overflow-tooltip
+          />
+          <el-table-column label="操作">
+            <template #default="{ row }">
+              <el-button
+                link
+                :disabled="!canEdit"
+                @click="editTeacher(row)"
+              >
+                编辑
+              </el-button>
+              <el-button
+                link
+                type="danger"
+                :disabled="!canEdit"
+                @click="removeTeacher(row)"
+              >
+                删除
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
       </div>
       <div
         v-if="activeTab === 'info'"
@@ -377,7 +576,13 @@ const flatPlans = computed(() => plans.value.flatMap((p) => [p, ...(p.teachPlanT
           class="notice-strip"
         >
           {{
-            courseStatus === '30502' ? '课程已发布，请先下架再编辑。' : '课程审核中，暂不能编辑。'
+            !courseLoaded
+              ? plansLoading
+                ? '正在加载课程信息…'
+                : '课程信息加载失败，请刷新后重试。'
+              : courseStatus === '30502'
+                ? '课程已发布，请先下架再编辑。'
+                : '课程审核中，暂不能编辑。'
           }}
         </div>
         <div
@@ -385,6 +590,12 @@ const flatPlans = computed(() => plans.value.flatMap((p) => [p, ...(p.teachPlanT
           class="notice-strip"
         >
           修改课程会撤销审核通过状态，保存后需重新提交审核。
+        </div>
+        <div
+          v-if="!id"
+          class="notice-strip"
+        >
+          先保存基础信息为草稿，再添加教学计划、关联媒资和讲师。全部完善后，在课程列表单独提交审核。
         </div>
         <el-form
           :model="form"
@@ -524,6 +735,14 @@ const flatPlans = computed(() => plans.value.flatMap((p) => [p, ...(p.teachPlanT
                 />
               </el-select>
             </el-form-item>
+            <!-- 0表示长期有效；免费续期按最新发布的天数重新计算。 -->
+            <el-form-item label="学习有效天数（0为长期有效）">
+              <el-input-number
+                v-model="form.validDays"
+                :min="0"
+                :precision="0"
+              />
+            </el-form-item>
             <el-form-item label="课程价格">
               <el-input-number
                 v-model="form.price"
@@ -554,7 +773,7 @@ const flatPlans = computed(() => plans.value.flatMap((p) => [p, ...(p.teachPlanT
             :disabled="!canEdit"
             @click="save"
           >
-            保存课程
+            {{ id ? '保存基本信息' : '保存草稿并继续' }}
           </el-button>
         </div>
       </div>
@@ -571,9 +790,13 @@ const flatPlans = computed(() => plans.value.flatMap((p) => [p, ...(p.teachPlanT
           class="notice-strip"
         >
           {{
-            courseStatus === '30502'
-              ? '课程已发布，请先下架再修改教学计划。'
-              : '课程审核中，暂不能修改教学计划。'
+            !courseLoaded
+              ? plansLoading
+                ? '正在加载课程信息…'
+                : '课程信息加载失败，请刷新后重试。'
+              : courseStatus === '30502'
+                ? '课程已发布，请先下架再修改教学计划。'
+                : '课程审核中，暂不能修改教学计划。'
           }}
         </div>
         <div class="plan-add">
@@ -657,6 +880,14 @@ const flatPlans = computed(() => plans.value.flatMap((p) => [p, ...(p.teachPlanT
             >
               <span>↳</span>
               {{ child.pname }}
+              <small v-if="child.isPreview === '1'">试学</small>
+              <el-button
+                link
+                :disabled="!canEdit || planActionId !== null"
+                @click="toggleTrial(child)"
+              >
+                {{ child.isPreview === '1' ? '取消试学' : '设为试学' }}
+              </el-button>
               <small v-if="child.teachplanMedia">· {{ child.teachplanMedia.mediaFilename }}</small>
               <el-button
                 link
@@ -702,7 +933,7 @@ const flatPlans = computed(() => plans.value.flatMap((p) => [p, ...(p.teachPlanT
         </div>
       </div>
       <div
-        v-else
+        v-else-if="activeTab === 'media'"
         class="editor-body"
       >
         <div class="form-intro">
@@ -810,7 +1041,9 @@ const flatPlans = computed(() => plans.value.flatMap((p) => [p, ...(p.teachPlanT
           <br />
           从这里开始。
         </h3>
-        <p>建议先保存课程，再添加教学计划，最后在关联媒资中上传并绑定视频。</p>
+        <p>
+          保存基础信息只创建草稿。继续添加教学计划、绑定视频和讲师，全部完善后再到课程列表提交审核。
+        </p>
         <div class="aside-steps">
           <span>① 完善课程信息</span>
           <span>② 编排章节与小节</span>
@@ -820,6 +1053,61 @@ const flatPlans = computed(() => plans.value.flatMap((p) => [p, ...(p.teachPlanT
       </div>
     </aside>
   </div>
+  <el-dialog
+    v-model="teacherOpen"
+    :title="teacherId ? '编辑课程讲师' : '添加课程讲师'"
+    width="560px"
+  >
+    <el-form
+      label-position="top"
+      :disabled="!canEdit || teacherSaving"
+    >
+      <el-form-item label="讲师姓名">
+        <el-input
+          v-model="teacherInput.teacherName"
+          maxlength="60"
+        />
+      </el-form-item>
+      <el-form-item label="讲师职位">
+        <el-input
+          v-model="teacherInput.position"
+          maxlength="255"
+        />
+      </el-form-item>
+      <el-form-item label="讲师介绍">
+        <el-input
+          v-model="teacherInput.introduction"
+          type="textarea"
+          :rows="4"
+          maxlength="1024"
+        />
+      </el-form-item>
+      <el-form-item label="讲师照片地址">
+        <el-input
+          v-model="teacherInput.photograph"
+          maxlength="1024"
+        />
+      </el-form-item>
+      <input
+        type="file"
+        accept="image/*"
+        aria-label="上传讲师照片"
+        :disabled="!canEdit || teacherSaving"
+        @change="teacherPhoto"
+      />
+    </el-form>
+    <template #footer>
+      <el-button @click="teacherOpen = false">取消</el-button>
+      <el-button
+        type="primary"
+        :loading="teacherSaving"
+        :disabled="!canEdit"
+        @click="saveTeacher"
+      >
+        保存讲师
+      </el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <style scoped>

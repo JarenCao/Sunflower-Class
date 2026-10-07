@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.core.AcknowledgeMode;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
+import org.springframework.amqp.core.Declarable;
 import org.springframework.amqp.core.Declarables;
 import org.springframework.amqp.core.DirectExchange;
 import org.springframework.amqp.core.Queue;
@@ -51,7 +52,8 @@ public class RabbitMQConfig {
         return new JacksonJsonMessageConverter(
             objectMapper,
             "com.sunflower_class.model.dto",
-            "com.sunflower_class.base.course"
+            "com.sunflower_class.base.course",
+            "com.sunflower_class.base.payment"
         );
     }
 
@@ -222,7 +224,7 @@ public class RabbitMQConfig {
     /** 两个消费者复用原生 TTL 重试和失败队列，业务方法不重复声明拓扑。 */
     @Bean
     public Declarables courseRetryQueues() {
-        List<org.springframework.amqp.core.Declarable> declarations = new ArrayList<>();
+        List<Declarable> declarations = new ArrayList<>();
         for (String target : List.of("search", "learning")) {
             Queue retry = QueueBuilder.durable("course." + target + ".retry.queue")
                 .ttl(10000)
@@ -244,5 +246,28 @@ public class RabbitMQConfig {
             );
         }
         return new Declarables(declarations);
+    }
+
+    /** 支付资格队列和回执独立持久化；失败延迟重试而非快速无限重入队。 */
+    @Bean
+    public Declarables paymentQueues() {
+        Queue payment = QueueBuilder.durable("payment.learning.queue").build();
+        Queue receipt = QueueBuilder.durable("payment.receipt.queue").build();
+        Queue retry = QueueBuilder.durable("payment.learning.retry.queue")
+            .ttl(10000)
+            .deadLetterExchange(DIRECT_EXCHANGE)
+            .deadLetterRoutingKey("payment.learning")
+            .build();
+        Queue failed = QueueBuilder.durable("payment.learning.failed.queue").build();
+        return new Declarables(
+            payment,
+            receipt,
+            retry,
+            failed,
+            BindingBuilder.bind(payment).to(directExchange()).with("payment.learning"),
+            BindingBuilder.bind(receipt).to(directExchange()).with("payment.receipt"),
+            BindingBuilder.bind(retry).to(directExchange()).with("payment.learning.retry"),
+            BindingBuilder.bind(failed).to(directExchange()).with("payment.learning.failed")
+        );
     }
 }

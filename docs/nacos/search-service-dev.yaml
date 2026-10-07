@@ -1,5 +1,5 @@
 # namespace: dev，group: sunflower_class；使用本机可访问的已有 Docker Elasticsearch。
 sunflower:
   elasticsearch:
-    endpoint: http://127.0.0.1:9200
+    endpoint: ${ELASTICSEARCH_ENDPOINT:http://127.0.0.1:9200}
     index: sunflower_courses

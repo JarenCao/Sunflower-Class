@@ -1,0 +1,5 @@
+# 合并到 gateway-dev.yaml 的 routes 列表。
+- id: auth-api
+  uri: lb://auth-api
+  predicates:
+    - Path=/auth/**

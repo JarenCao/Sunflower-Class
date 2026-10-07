@@ -41,21 +41,21 @@ public class CourseEventConsumer {
         CourseEvent event = null;
         try {
             event = json.readValue(message.getBody(), CourseEvent.class);
-            var course = json.readValue(event.snapshot(), Map.class);
+            Map course = json.readValue(event.getSnapshot(), Map.class);
             if (
-                event.eventId() <= 0 ||
-                event.courseId() <= 0 ||
+                event.getEventId() <= 0 ||
+                event.getCourseId() <= 0 ||
                 !(course.get("id") instanceof Number id) ||
-                id.longValue() != event.courseId() ||
-                !List.of("30502", "30503").contains(event.status()) ||
-                !event.status().equals(course.get("status"))
+                id.longValue() != event.getCourseId() ||
+                !List.of("30502", "30503").contains(event.getStatus()) ||
+                !event.getStatus().equals(course.get("status"))
             ) {
                 throw new IllegalArgumentException("课程事件与快照不一致");
             }
             writer.accept(event);
             sender.send(
                 RabbitMQConfig.COURSE_RECEIPT_ROUTING_KEY,
-                new CourseReceipt(event.eventId(), target, null)
+                new CourseReceipt(event.getEventId(), target, null)
             );
             channel.basicAck(tag, false);
         } catch (Exception error) {
@@ -73,11 +73,11 @@ public class CourseEventConsumer {
                 .build();
             try {
                 // 业务失败也回传持久化状态；错误只含类型，不向管理端泄漏连接凭据。
-                if (event != null && event.eventId() > 0) {
+                if (event != null && event.getEventId() > 0) {
                     sender.send(
                         RabbitMQConfig.COURSE_RECEIPT_ROUTING_KEY,
                         new CourseReceipt(
-                            event.eventId(),
+                            event.getEventId(),
                             target,
                             "课程副本处理失败：" + error.getClass().getSimpleName()
                         )

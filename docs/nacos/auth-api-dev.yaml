@@ -1,0 +1,5 @@
+# namespace: dev，group: sunflower_class；Auth当前从auth-service-dev.yaml取得端口。
+server:
+  port: 63080
+  servlet:
+    context-path: /

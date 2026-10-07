@@ -1,0 +1,5 @@
+# namespace: dev，group: common
+logging:
+  level:
+    root: INFO
+    com.sunflower_class: INFO

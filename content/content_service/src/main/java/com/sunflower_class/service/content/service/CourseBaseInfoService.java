@@ -4,9 +4,12 @@ import com.sunflower_class.base.model.PageParams;
 import com.sunflower_class.base.model.PageResult;
 import com.sunflower_class.model.dto.AddCourseDto;
 import com.sunflower_class.model.dto.CourseBaseInfoDto;
+import com.sunflower_class.model.dto.CourseTeacherDto;
 import com.sunflower_class.model.dto.EditCourseDto;
 import com.sunflower_class.model.dto.QueryCourseParamsDto;
-import com.sunflower_class.model.po.CourseBase;
+import com.sunflower_class.model.po.CourseTeacher;
+import java.util.List;
+import java.util.Map;
 
 /**
  * 课程基础与营销信息的查询、新建、修改及事务删除业务契约。
@@ -43,4 +46,13 @@ public interface CourseBaseInfoService {
      * 校验机构归属和发布状态，在同一事务内删除课程及其关联数据。
      */
     void deleteCourse(Long companyId, Long courseId);
+    /** 读取本机构课程的讲师介绍，独立于教师登录账号。 */
+    List<CourseTeacher> listCourseTeachers(Long courseId);
+    /** 保存讲师介绍，并使旧审核结论失效。 */
+    CourseTeacher saveCourseTeacher(Long courseId, Long teacherId, CourseTeacherDto input);
+    /** 删除本课程讲师介绍，不删除教师登录账号。 */
+    void deleteCourseTeacher(Long courseId, Long teacherId);
+
+    /** 在课程库核对媒资的草稿、封面、审核和发布引用，只返回数量。 */
+    Map<String, Long> mediaReferences(String id, String url);
 }

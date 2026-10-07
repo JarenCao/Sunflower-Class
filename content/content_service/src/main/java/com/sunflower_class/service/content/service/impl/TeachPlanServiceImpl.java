@@ -8,6 +8,8 @@ import static com.sunflower_class.base.model.BusinessCodes.COURSE_OFFLINE;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.sunflower_class.base.exception.GlobalException;
+import com.sunflower_class.base.model.BusinessCodes;
+import com.sunflower_class.base.security.CurrentUser;
 import com.sunflower_class.model.dto.AddTeachPlanDto;
 import com.sunflower_class.model.dto.TeachPlanDto;
 import com.sunflower_class.model.po.CourseBase;
@@ -20,14 +22,16 @@ import com.sunflower_class.service.content.mapper.TeachplanMediaMapper;
 import com.sunflower_class.service.content.service.TeachPlanService;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * 维护课程章与小节，校验课程归属并处理删除、同级排序及关联清理。
@@ -48,9 +52,6 @@ public class TeachPlanServiceImpl implements TeachPlanService {
     @Autowired
     private CoursePublishPreMapper coursePublishPreMapper;
 
-    @Value("${sunflower.company-id}")
-    private Long companyId;
-
     /** 锁定课程行，串行化同一课程的目录修改，并校验机构与发布状态。 */
     private CourseBase requireEditableCourse(Long courseId) {
         if (courseId == null || courseId <= 0) GlobalException.cast("课程编号无效");
@@ -58,7 +59,9 @@ public class TeachPlanServiceImpl implements TeachPlanService {
             new LambdaQueryWrapper<CourseBase>().eq(CourseBase::getId, courseId).last("FOR UPDATE")
         );
         if (course == null) GlobalException.cast("课程不存在");
-        if (!companyId.equals(course.getCompanyId())) GlobalException.cast("不能修改非本机构课程");
+        if (!CurrentUser.companyId().equals(course.getCompanyId())) GlobalException.cast(
+            "不能修改非本机构课程"
+        );
         if (
             !COURSE_DRAFT.equals(course.getStatus()) && !COURSE_OFFLINE.equals(course.getStatus())
         ) {
@@ -120,7 +123,7 @@ public class TeachPlanServiceImpl implements TeachPlanService {
     public List<TeachPlanDto> findTeachPlanTree(Long id) {
         // 编排目录只向当前配置的机构开放，避免根据课程编号读取其他机构的未发布计划。
         CourseBase course = courseBaseMapper.selectById(id);
-        if (course == null || !companyId.equals(course.getCompanyId())) {
+        if (course == null || !CurrentUser.companyId().equals(course.getCompanyId())) {
             GlobalException.cast("课程不存在或不属于当前机构");
         }
         return teachplanMapper.queryTreeNodes(id);
@@ -149,9 +152,21 @@ public class TeachPlanServiceImpl implements TeachPlanService {
         ) {
             GlobalException.cast("请选择章节或小节层级");
         }
+        String preview =
+            addTeachPlanDto.getIsPreview() == null ? "0" : addTeachPlanDto.getIsPreview();
+        if (
+            (!"0".equals(preview) && !"1".equals(preview)) ||
+            (addTeachPlanDto.getGrade() == 1 && !"0".equals(preview))
+        ) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "只有小节可以设置试学，标记只能为0或1"
+            );
+        }
+        teachPlan.setIsPreview(preview);
         // 校验层级只能是章或小节后，再转换为数据库实体使用的 short 类型。
         teachPlan.setGrade(addTeachPlanDto.getGrade().shortValue());
-        teachPlan.setStatus(com.sunflower_class.base.model.BusinessCodes.RECORD_ACTIVE);
+        teachPlan.setStatus(BusinessCodes.RECORD_ACTIVE);
 
         Long id = addTeachPlanDto.getId();
 
@@ -191,8 +206,9 @@ public class TeachPlanServiceImpl implements TeachPlanService {
             ) {
                 GlobalException.cast("不能更改教学计划所属课程或层级");
             }
-            // 只更新名称，保留已有排序号、状态及绑定关系。
+            // 更新名称与试学标记，保留排序号、状态及绑定关系；仍需重新审核发布。
             existing.setPname(teachPlan.getPname());
+            existing.setIsPreview(teachPlan.getIsPreview());
             existing.setChangeDate(LocalDateTime.now());
             teachplanMapper.updateById(existing);
             log.info("教学计划更新成功，ID：{}", id);
@@ -251,7 +267,7 @@ public class TeachPlanServiceImpl implements TeachPlanService {
         if (position < 0) GlobalException.cast("教学计划不属于当前课程");
         int target = position + ("up".equals(direction) ? -1 : 1);
         if (target < 0 || target >= peers.size()) return;
-        java.util.Collections.swap(peers, position, target);
+        Collections.swap(peers, position, target);
         renumber(peers);
         invalidateApproval(course);
     }

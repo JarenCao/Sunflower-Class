@@ -6,8 +6,7 @@ public final class BusinessCodes {
     /**
      * 禁止实例化常量容器；业务代码直接通过类名引用状态编码。
      */
-    private BusinessCodes() {
-    }
+    private BusinessCodes() {}
 
     // 课程教学模式：录播、直播。
     public static final String TEACH_RECORDED = "30101";
@@ -33,6 +32,15 @@ public final class BusinessCodes {
     public static final String COURSE_PUBLISHED = "30502";
     public static final String COURSE_OFFLINE = "30503";
 
+    // 选课类型、选课状态和学习资格分别对应现有 701、702、703 字典。
+    public static final String ENROLLMENT_FREE = "70101";
+    public static final String ENROLLMENT_PAID = "70102";
+    public static final String ENROLLMENT_SUCCESS = "70201";
+    public static final String ENROLLMENT_PENDING = "70202";
+    public static final String QUALIFICATION_ALLOWED = "70301";
+    public static final String QUALIFICATION_NONE = "70302";
+    public static final String QUALIFICATION_EXPIRED = "70303";
+
     // 文件类型：图片、视频、其他。
     public static final String FILE_IMAGE = "20101";
     public static final String FILE_VIDEO = "20102";
@@ -47,6 +55,8 @@ public final class BusinessCodes {
     public static final String PROCESS_READY = "20302";
     public static final String PROCESS_FAILED = "20303";
     public static final String PROCESS_RUNNING = "20304";
+    /** 删除标记阻止新绑定与转码写回，失败后仍可重新清理。 */
+    public static final String PROCESS_DELETING = "20305";
 
     // 教学计划记录状态：正常、删除。
     public static final int RECORD_ACTIVE = 10101;

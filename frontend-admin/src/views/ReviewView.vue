@@ -1,9 +1,10 @@
 <!-- 审核工作台：查看课程、提交审核结论及追踪操作记录。 -->
 <script setup lang="ts">
+import { errorMessage } from '../../../frontend-shared/error-message'
 import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { PAGE_SIZE, getAuditHistory, listCourses, reviewCourse } from '../api'
-import type { Course, CourseAuditRecord } from '../types'
+import { PAGE_SIZE, getAuditHistory, listAuditCourses, getAuditDetail, reviewCourse } from '../api'
+import type { Course, CourseAuditRecord, ReviewSnapshot, Teachplan, CourseTeacher } from '../types'
 
 const rows = ref<Course[]>([])
 const page = ref(1)
@@ -14,6 +15,28 @@ const processingId = ref<number | null>(null)
 const historyOpen = ref(false)
 const history = ref<CourseAuditRecord[]>([])
 const historyCourseName = ref('')
+const detailOpen = ref(false)
+const detail = ref<ReviewSnapshot | null>(null)
+const plans = ref<Teachplan[]>([])
+const teachers = ref<CourseTeacher[]>([])
+
+/** 只读提交快照，目录解析失败时给出错误，不能伪造空目录。 */
+async function showDetail(course: Course) {
+  try {
+    const snapshot = await getAuditDetail(course.id)
+    const tree = JSON.parse(snapshot.teachplan || '[]')
+    if (!Array.isArray(tree)) throw new Error('审核快照目录格式无效')
+    // 平台管理员读取提交时冻结的师资快照，不查询可变草稿。
+    const staff = JSON.parse(snapshot.teachers || '[]')
+    if (!Array.isArray(staff)) throw new Error('师资快照格式无效')
+    teachers.value = staff
+    detail.value = snapshot
+    plans.value = tree
+    detailOpen.value = true
+  } catch (error) {
+    ElMessage.error(errorMessage(error))
+  }
+}
 
 // 切换审核状态时回到第一页。
 function changeStatus() {
@@ -25,7 +48,7 @@ function changeStatus() {
 async function refresh() {
   loading.value = true
   try {
-    const result = await listCourses(page.value, PAGE_SIZE, '', status.value)
+    const result = await listAuditCourses(page.value, PAGE_SIZE, status.value)
     rows.value = result.items
     count.value = result.count
     if (page.value > 1 && rows.value.length === 0) {
@@ -33,7 +56,7 @@ async function refresh() {
       await refresh()
     }
   } catch (error) {
-    ElMessage.error((error as Error).message)
+    ElMessage.error(errorMessage(error))
   } finally {
     loading.value = false
   }
@@ -69,7 +92,7 @@ async function decide(course: Course, approved: boolean) {
     ElMessage.success(approved ? '审核已通过' : '课程已驳回')
     await refresh()
   } catch (error) {
-    ElMessage.error((error as Error).message)
+    ElMessage.error(errorMessage(error))
   } finally {
     processingId.value = null
   }
@@ -82,7 +105,7 @@ async function showHistory(course: Course) {
     historyCourseName.value = course.name
     historyOpen.value = true
   } catch (error) {
-    ElMessage.error((error as Error).message)
+    ElMessage.error(errorMessage(error))
   }
 }
 
@@ -152,12 +175,13 @@ onMounted(refresh)
         min-width="330"
       >
         <template #default="{ row }">
-          <RouterLink
-            :to="`/courses/${row.id}`"
-            class="table-link"
+          <el-button
+            link
+            type="primary"
+            @click="showDetail(row)"
           >
-            查看详情
-          </RouterLink>
+            查看快照
+          </el-button>
           <el-button
             link
             type="info"
@@ -196,6 +220,43 @@ onMounted(refresh)
       />
     </div>
   </div>
+
+  <el-dialog
+    v-model="detailOpen"
+    :title="`${detail?.name || ''} · 提交快照`"
+    width="760px"
+  >
+    <template v-if="detail">
+      <p>所属机构：{{ detail.companyName || detail.companyId }}</p>
+      <p>{{ detail.description }}</p>
+      <p>{{ detail.charge === '30201' ? '免费课程' : `收费课程 ¥${detail.price}` }}</p>
+      <h3>提交时的课程师资</h3>
+      <p v-if="!teachers.length">暂无讲师介绍</p>
+      <div
+        v-for="teacher in teachers"
+        :key="teacher.id"
+      >
+        <strong>{{ teacher.teacherName }} · {{ teacher.position }}</strong>
+        <p>{{ teacher.introduction }}</p>
+      </div>
+      <h3>提交时的教学目录</h3>
+      <el-table
+        :data="plans"
+        row-key="id"
+        :tree-props="{ children: 'teachPlanTreeNodes' }"
+        default-expand-all
+      >
+        <el-table-column
+          prop="pname"
+          label="章节与小节"
+        />
+        <el-table-column
+          prop="mediaFilename"
+          label="关联媒资"
+        />
+      </el-table>
+    </template>
+  </el-dialog>
 
   <el-dialog
     v-model="historyOpen"

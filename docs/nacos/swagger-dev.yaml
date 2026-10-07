@@ -1,0 +1,6 @@
+# namespace: dev，group: common
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

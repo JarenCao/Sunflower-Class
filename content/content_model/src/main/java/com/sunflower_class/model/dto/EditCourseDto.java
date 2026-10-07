@@ -11,7 +11,7 @@ import lombok.Data;
 @Schema(description = "编辑课程信息")
 public class EditCourseDto extends AddCourseDto {
 
-    @Schema(description = "课程id", example = "19")
+    @Schema(description = "课程id", example = "19", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotNull(message = "课程id不能为空")
     private Long id;
 }

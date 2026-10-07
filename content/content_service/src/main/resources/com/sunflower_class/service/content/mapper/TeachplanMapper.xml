@@ -41,6 +41,8 @@
         <result column="one_orderby" property="orderby" />
         <result column="one_courseId" property="courseId" />
         <result column="one_coursePubId" property="coursePubId" />
+        <!-- 试学标记随目录进入审核和正式发布快照，不能只保存在草稿表。 -->
+        <result column="one_isPreview" property="isPreview" />
         
         <!-- 一级中包含多个二级数据 -->
         <collection property="teachPlanTreeNodes" 
@@ -56,16 +58,16 @@
             <result column="two_orderby" property="orderby" />
             <result column="two_courseId" property="courseId" />
             <result column="two_coursePubId" property="coursePubId" />
+            <result column="two_isPreview" property="isPreview" />
             
-            <!-- 二级关联的媒体信息 -->
+            <!-- 仅有真实媒资绑定时创建关联，未绑定小节保持空关联。 -->
             <association property="teachplanMedia" 
-                        javaType="com.sunflower_class.model.po.TeachplanMedia">
+                        javaType="com.sunflower_class.model.po.TeachplanMedia" notNullColumn="teachplanMediaId">
                 <id column="teachplanMediaId" property="id" />
                 <result column="mediaFilename" property="mediaFilename" />
                 <result column="mediaId" property="mediaId" />
                 <result column="two_id" property="teachplanId" />
                 <result column="two_courseId" property="courseId" />
-                <result column="two_coursePubId" property="coursePubId" />
             </association>
         </collection>
     </resultMap>
@@ -83,6 +85,7 @@
             one.orderby AS one_orderby,
             one.course_id AS one_courseId,
             one.course_pub_id AS one_coursePubId,
+            one.is_preview AS one_isPreview,
             
             two.id AS two_id,
             two.pname AS two_pname,
@@ -94,6 +97,7 @@
             two.orderby AS two_orderby,
             two.course_id AS two_courseId,
             two.course_pub_id AS two_coursePubId,
+            two.is_preview AS two_isPreview,
             
             m.id AS teachplanMediaId,
             m.media_filename AS mediaFilename,

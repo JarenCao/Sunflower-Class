@@ -31,17 +31,17 @@
 
 ## 主要配置入口
 
-| 配置 | 默认或用途 |
-| --- | --- |
-| NACOS_SERVER_ADDR | localhost:8848；WSL 映射不可用时设置实际 Ubuntu 地址 |
-| NACOS_NAMESPACE | dev |
-| SUNFLOWER_COMPANY_ID | 1232141425；当前单机构开发身份，不是登录认证 |
-| LOG_PATH | logs；相对服务进程工作目录 |
-| ffmpeg.host-data-dir | Ubuntu Docker 可访问的绝对目录 |
-| ffmpeg.wsl-distro | Ubuntu-24.04 |
-| ffmpeg.image / video-codec / audio-codec / crf / preset | FFmpeg 参数，Nacos 可覆盖 |
-| minio.videofiles | video；上传与转码共用配置桶 |
-| media.transcode.max-attempts | 3；消费者与补偿一致 |
-| media.transcode.retry-batch-size / retry-cron | 10 / 每五分钟 |
+| 配置                                                    | 默认或用途                                           |
+| ------------------------------------------------------- | ---------------------------------------------------- |
+| NACOS_SERVER_ADDR                                       | localhost:8848；WSL 映射不可用时设置实际 Ubuntu 地址 |
+| NACOS_NAMESPACE                                         | dev                                                  |
+| SUNFLOWER_COMPANY_ID                                    | 1232141425；当前单机构开发身份，不是登录认证         |
+| LOG_PATH                                                | logs；相对服务进程工作目录                           |
+| ffmpeg.host-data-dir                                    | Ubuntu Docker 可访问的绝对目录                       |
+| ffmpeg.wsl-distro                                       | Ubuntu-24.04                                         |
+| ffmpeg.image / video-codec / audio-codec / crf / preset | FFmpeg 参数，Nacos 可覆盖                            |
+| minio.videofiles                                        | video；上传与转码共用配置桶                          |
+| media.transcode.max-attempts                            | 3；消费者与补偿一致                                  |
+| media.transcode.retry-batch-size / retry-cron           | 10 / 每五分钟                                        |
 
 本次不增加登录、选课、支付或审核通过接口；这些仍按原开发清单推进。

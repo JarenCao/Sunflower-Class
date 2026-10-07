@@ -1,5 +1,6 @@
 package com.sunflower_class.base.utils;
 
+import com.sunflower_class.base.config.FFmpegConfig;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.InputStreamReader;
@@ -7,13 +8,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-
+import java.util.function.BooleanSupplier;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-
-import com.sunflower_class.base.config.FFmpegConfig;
-
-import lombok.extern.slf4j.Slf4j;
 
 /**
  * 协调 Windows、WSL 和 Docker 的视频转码工具，负责文件搬运、进程执行和临时文件清理。
@@ -29,7 +27,18 @@ public class FfmpegUtils {
      * 将本地视频复制到 WSL，调用 Docker 中的 FFmpeg 转码并取回输出；成功返回 true，失败返回 false。
      */
     public boolean executeTranscode(String inputPath, String outputPath) {
-        if (inputPath == null || inputPath.isEmpty() || outputPath == null || outputPath.isEmpty()) {
+        return executeTranscode(inputPath, outputPath, () -> false);
+    }
+
+    /** 转码同时检查任务取消，原生进程等待落实超时；只清理本次命名容器。 */
+    public boolean executeTranscode(
+        String inputPath,
+        String outputPath,
+        BooleanSupplier cancelled
+    ) {
+        if (
+            inputPath == null || inputPath.isEmpty() || outputPath == null || outputPath.isEmpty()
+        ) {
             log.error("输入或输出路径为空");
             return false;
         }
@@ -38,6 +47,7 @@ public class FfmpegUtils {
         String outputFileName = getFileName(outputPath);
 
         String uid = UUID.randomUUID().toString().substring(0, 8);
+        String containerName = "sunflower-transcode-" + uid;
         String wslInputPath = config.getHostDataDir() + "/" + uid + "_" + inputFileName;
         String wslOutputPath = config.getHostDataDir() + "/" + uid + "_" + outputFileName;
 
@@ -58,6 +68,8 @@ public class FfmpegUtils {
             command.add("docker");
             command.add("run");
             command.add("--rm");
+            command.add("--name");
+            command.add(containerName);
             command.add("-v");
             command.add(config.getHostDataDir() + ":" + config.getContainerDataDir());
             command.add(config.getImage());
@@ -88,21 +100,32 @@ public class FfmpegUtils {
             processBuilder.redirectErrorStream(true);
             Process process = processBuilder.start();
 
-            try (
+            // 虚拟线程排空输出，主线程仍能每秒检查取消和超时，不被readLine无限阻塞。
+            Thread outputReader = Thread.startVirtualThread(() -> {
+                try (
                     BufferedReader reader = new BufferedReader(
-                            new InputStreamReader(process.getInputStream()))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    log.info("FFmpeg: {}", line);
+                        new InputStreamReader(process.getInputStream())
+                    )
+                ) {
+                    String line;
+                    while ((line = reader.readLine()) != null) log.info("FFmpeg: {}", line);
+                } catch (Exception error) {
+                    log.debug("转码输出读取结束", error);
+                }
+            });
+            long deadline =
+                System.nanoTime() + TimeUnit.MINUTES.toNanos(config.getTimeoutMinutes());
+            while (!process.waitFor(1, TimeUnit.SECONDS)) {
+                if (cancelled.getAsBoolean() || System.nanoTime() >= deadline) {
+                    stopContainer(containerName);
+                    process.destroyForcibly();
+                    outputReader.join(3000);
+                    log.warn("转码已取消或超时：{}", containerName);
+                    return false;
                 }
             }
-
-            boolean finished = process.waitFor(config.getTimeoutMinutes(), TimeUnit.MINUTES);
-            if (!finished) {
-                process.destroyForcibly();
-                log.error("FFmpeg 转码超时（超过 {} 分钟）", config.getTimeoutMinutes());
-                return false;
-            }
+            outputReader.join(3000);
+            if (cancelled.getAsBoolean()) return false;
 
             int exitCode = process.exitValue();
             if (exitCode != 0) {
@@ -125,7 +148,29 @@ public class FfmpegUtils {
             log.error("转码异常", e);
             return false;
         } finally {
+            stopContainer(containerName);
             cleanWslFiles(wslInputPath, wslOutputPath);
+        }
+    }
+
+    /** 仅终止本次任务生成的唯一容器，防止杀死WSL启动器后留下后台转码。 */
+    private void stopContainer(String containerName) {
+        try {
+            Process process = new ProcessBuilder(
+                "wsl",
+                "-d",
+                config.getWslDistro(),
+                "docker",
+                "rm",
+                "-f",
+                containerName
+            )
+                .redirectErrorStream(true)
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                .start();
+            if (!process.waitFor(10, TimeUnit.SECONDS)) process.destroyForcibly();
+        } catch (Exception error) {
+            log.warn("清理本次转码容器失败：{}", containerName);
         }
     }
 
@@ -135,12 +180,12 @@ public class FfmpegUtils {
     private void ensureWslWorkDir() {
         try {
             String[] cmd = {
-                    "wsl",
-                    "-d",
-                    config.getWslDistro(),
-                    "mkdir",
-                    "-p",
-                    config.getHostDataDir(),
+                "wsl",
+                "-d",
+                config.getWslDistro(),
+                "mkdir",
+                "-p",
+                config.getHostDataDir(),
             };
             Process p = new ProcessBuilder(cmd).start();
             p.waitFor(10, TimeUnit.SECONDS);
@@ -174,8 +219,10 @@ public class FfmpegUtils {
             Process process = pb.start();
 
             try (
-                    BufferedReader reader = new BufferedReader(
-                            new InputStreamReader(process.getInputStream()))) {
+                BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream())
+                )
+            ) {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     log.warn("copyToWsl: {}", line);
@@ -220,8 +267,10 @@ public class FfmpegUtils {
             Process process = pb.start();
 
             try (
-                    BufferedReader reader = new BufferedReader(
-                            new InputStreamReader(process.getInputStream()))) {
+                BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream())
+                )
+            ) {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     log.warn("copyFromWsl: {}", line);
@@ -254,13 +303,13 @@ public class FfmpegUtils {
     private void cleanWslFiles(String inputPath, String outputPath) {
         try {
             String[] cmd = {
-                    "wsl",
-                    "-d",
-                    config.getWslDistro(),
-                    "rm",
-                    "-f",
-                    inputPath,
-                    outputPath,
+                "wsl",
+                "-d",
+                config.getWslDistro(),
+                "rm",
+                "-f",
+                inputPath,
+                outputPath,
             };
             Process p = new ProcessBuilder(cmd).start();
             p.waitFor(10, TimeUnit.SECONDS);

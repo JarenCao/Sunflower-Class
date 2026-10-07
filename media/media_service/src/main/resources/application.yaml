@@ -5,9 +5,9 @@ spring:
     active: dev
   config:
     import:
-      - "nacos:media-service-dev.yaml?group=sunflower_class"
-      - "nacos:logging-dev.yaml?group=common"
-      - "nacos:rabbitmq-dev.yaml?group=common"
+      - 'nacos:media-service-dev.yaml?group=sunflower_class'
+      - 'nacos:logging-dev.yaml?group=common'
+      - 'nacos:rabbitmq-dev.yaml?group=common'
   cloud:
     nacos:
       config:

@@ -1,5 +1,6 @@
 <!-- 课程目录：通过搜索服务查询已发布课程，服务端每页返回十条。 -->
 <script setup lang="ts">
+import { errorMessage } from '../../../frontend-shared/error-message'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import CourseCard from '../components/CourseCard.vue'
@@ -40,7 +41,7 @@ async function load() {
     if (version !== requestVersion) return
     courses.value = []
     total.value = 0
-    error.value = (e as Error).message
+    error.value = errorMessage(e)
   } finally {
     if (version === requestVersion) loading.value = false
   }
@@ -50,7 +51,7 @@ onMounted(async () => {
   try {
     categories.value = ['全部课程', ...(await getCourseCategories())]
   } catch (e) {
-    error.value = (e as Error).message
+    error.value = errorMessage(e)
   }
   await load()
 })

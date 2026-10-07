@@ -5,13 +5,17 @@ spring:
     active: dev
   config:
     import:
-      - "nacos:gateway-dev.yaml?group=sunflower_class"
-      - "nacos:logging-dev.yaml?group=common"
+      - 'nacos:auth-dev.yaml?group=common'
+      - 'nacos:redis-dev.yaml?group=common'
+      - 'nacos:gateway-dev.yaml?group=sunflower_class'
+      - 'nacos:logging-dev.yaml?group=common'
   cloud:
     nacos:
       config:
         enabled: true
         server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        username: ${NACOS_USERNAME:}
+        password: ${NACOS_PASSWORD:}
         namespace: ${NACOS_NAMESPACE:dev}
         group: sunflower_class
         file-extension: yaml
@@ -19,5 +23,7 @@ spring:
       discovery:
         enabled: true
         server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        username: ${NACOS_USERNAME:}
+        password: ${NACOS_PASSWORD:}
         namespace: ${NACOS_NAMESPACE:dev}
         group: sunflower_class

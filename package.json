@@ -6,7 +6,7 @@
   "name": "xiaokuihua-code-tools",
   "private": true,
   "scripts": {
-    "format": "prettier --write \"frontend-{admin,student}/src/**/*.{vue,ts,css}\" \"frontend-{admin,student}/*.{ts,html,json}\" \"{base,content,media,gateway,search,learning}/**/src/**/*.java\" \"scripts/*.java\"",
-    "format:check": "prettier --check \"frontend-{admin,student}/src/**/*.{vue,ts,css}\" \"frontend-{admin,student}/*.{ts,html,json}\" \"{base,content,media,gateway,search,learning}/**/src/**/*.java\" \"scripts/*.java\""
+    "format": "prettier --write \"{frontend-admin,frontend-student,frontend-shared}/**/*.{vue,ts,css}\" \"frontend-{admin,student}/*.{ts,html,json}\" \"{base,content,media,gateway,search,learning,auth,orders}/**/src/**/*.java\" \"*.{json,md}\" \"docs/**/*.md\" \"{deploy,docs,base,auth,content,media,search,learning,orders,gateway}/**/*.{yaml,yml}\"",
+    "format:check": "prettier --check \"{frontend-admin,frontend-student,frontend-shared}/**/*.{vue,ts,css}\" \"frontend-{admin,student}/*.{ts,html,json}\" \"{base,content,media,gateway,search,learning,auth,orders}/**/src/**/*.java\" \"*.{json,md}\" \"docs/**/*.md\" \"{deploy,docs,base,auth,content,media,search,learning,orders,gateway}/**/*.{yaml,yml}\""
   }
 }

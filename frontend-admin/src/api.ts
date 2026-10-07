@@ -1,11 +1,15 @@
 /* 机构端接口适配层：封装内容与媒资请求、响应错误及文件分片上传。 */
 import axios from 'axios'
+import { errorMessage } from '../../frontend-shared/error-message'
 import SparkMD5 from 'spark-md5'
+import { csrfHeaders, identity } from './auth'
 import type {
   Category,
   Course,
   CourseAuditRecord,
   CourseInput,
+  CourseTeacher,
+  CourseTeacherInput,
   MediaFile,
   PageResult,
   RestResponse,
@@ -42,25 +46,29 @@ const http = axios.create({ baseURL: '/api/content', timeout: 30000 })
 const mediaHttp = axios.create({ baseURL: '/api/media', timeout: 120000 })
 // 兼容后端不同异常响应结构，将可读错误交给页面统一提示。
 for (const client of [http, mediaHttp]) {
+  // 写请求携带 CSRF 令牌；身份 Cookie 由浏览器发送，不拼接机构编号或 JWT。
+  client.interceptors.request.use(async (config) => {
+    if (!['get', 'head', 'options'].includes(config.method || 'get')) {
+      Object.assign(config.headers, await csrfHeaders())
+    }
+    return config
+  })
   client.interceptors.response.use(
     // 成功响应保持 Axios 原结构，业务码由需要的调用方单独检查。
     (response) => response,
     // 网络或 HTTP 异常转为 Error，优先采用服务端的可读提示。
-    (error) =>
-      Promise.reject(
-        new Error(
-          error.response?.data?.msg ||
-            error.response?.data?.errMessage ||
-            error.response?.data?.message ||
-            error.message ||
-            '请求失败',
-        ),
-      ),
+    (error) => {
+      if (error.response?.status === 401) {
+        identity.value = null
+        window.location.assign('/login?redirect=' + encodeURIComponent(window.location.pathname))
+      }
+      return Promise.reject(new Error(errorMessage(error)))
+    },
   )
 }
 // HTTP 成功不等于业务成功，统一检查后端响应码。
 function check<T>(data: RestResponse<T>): T {
-  if (data.code !== 0) throw new Error(data.msg)
+  if (data.code !== 0) throw new Error(errorMessage(data.msg))
   return data.result
 }
 // 分页参数放在查询字符串中，名称和状态筛选条件放在请求体中。
@@ -109,6 +117,7 @@ export async function addTeachplan(
   pname: string,
   parentId = 0,
   id?: number,
+  isPreview = '0',
 ): Promise<void> {
   await http.post('/teachplan', {
     id,
@@ -117,7 +126,7 @@ export async function addTeachplan(
     parentId,
     grade: parentId ? 2 : 1,
     mediaType: '1',
-    isPreview: '0',
+    isPreview,
   })
 }
 
@@ -207,7 +216,7 @@ export async function bindMedia(teachplanId: number, media: MediaFile): Promise<
 export async function submitAudit(courseId: number): Promise<void> {
   check((await http.post(`/courseaudit/commit/${courseId}`)).data)
 }
-// 审核结论及意见由真实接口持久化，审核人由服务端配置确定。
+// 审核结论及意见由真实接口持久化，审核人从服务端验证的登录身份获取。
 export async function reviewCourse(
   courseId: number,
   approved: boolean,
@@ -232,4 +241,56 @@ export async function offlineCourse(courseId: number): Promise<void> {
 // 删除未发布或已下架课程及其关系记录，媒资文件仍由媒资服务保留。
 export async function deleteCourse(courseId: number): Promise<void> {
   await http.delete(`/course/${courseId}`)
+}
+
+/** 读取当前机构文件的真实转码任务，错误与次数直接来自数据库。 */
+export async function getMediaProcess(id: string) {
+  return (await mediaHttp.get(`/files/${id}/process`)).data
+}
+/** 失败任务重新开启有限重试，不能直接把任务标记成功。 */
+export async function retryMediaProcess(id: string) {
+  await mediaHttp.post(`/files/${id}/retry`)
+}
+
+/** 删除前读取真实引用；服务不可用时不放行删除。 */
+export async function getMediaReferences(id: string) {
+  return (await mediaHttp.get(`/files/${id}/references`)).data as Record<string, number>
+}
+/** 返回202时保留删除中记录，只有204表示实际清理完成。 */
+export async function deleteMedia(id: string) {
+  return (await mediaHttp.delete(`/files/${id}`)).status
+}
+
+/** 审核使用独立跨机构只读队列，不复用机构课程列表。 */
+export async function listAuditCourses(
+  page: number,
+  pageSize: number,
+  status: string,
+): Promise<PageResult<Course>> {
+  return (await http.get('/courseaudit/queue', { params: { pageNo: page, pageSize, status } })).data
+}
+/** 提交时快照只用于核对课程内容，不提供任何编辑或媒资上传操作。 */
+export async function getAuditDetail(id: number): Promise<import('./types').ReviewSnapshot> {
+  return (await http.get(`/courseaudit/detail/${id}`)).data
+}
+
+/** 师资使用当前课程路径，不接收客户端传入机构归属。 */
+export async function listCourseTeachers(courseId: number): Promise<CourseTeacher[]> {
+  return (await http.get(`/course/${courseId}/teachers`)).data
+}
+export async function saveCourseTeacher(
+  courseId: number,
+  input: CourseTeacherInput,
+  id?: number,
+): Promise<CourseTeacher> {
+  return (
+    await http.request({
+      url: `/course/${courseId}/teachers${id ? '/' + id : ''}`,
+      method: id ? 'PUT' : 'POST',
+      data: input,
+    })
+  ).data
+}
+export async function deleteCourseTeacher(courseId: number, id: number): Promise<void> {
+  await http.delete(`/course/${courseId}/teachers/${id}`)
 }

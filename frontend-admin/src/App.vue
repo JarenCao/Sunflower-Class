@@ -1,9 +1,21 @@
 <!-- 机构端应用框架：侧边导航、当前页面标题与路由内容区域。 -->
 <script setup lang="ts">
 import { computed } from 'vue'
+import { ElMessage } from 'element-plus'
+import { errorMessage } from '../../frontend-shared/error-message'
 import { useRoute } from 'vue-router'
+import { identity, logout } from './auth'
 
 const route = useRoute()
+/** 退出成功后返回登录页，页面不保留上一个账号的数据。 */
+async function signOut() {
+  try {
+    await logout()
+    window.location.assign('/login')
+  } catch (error) {
+    ElMessage.error(errorMessage(error, '退出失败，请稍后重试'))
+  }
+}
 // 根据当前路由计算页头标题，区分课程新建与已有课程编辑。
 const title = computed(() => {
   if (route.path.startsWith('/courses/'))
@@ -14,21 +26,34 @@ const title = computed(() => {
         '/': '工作台',
         '/courses': '课程管理',
         '/media': '媒资中心',
-        '/review': '审核工作台',
+        '/review': '课程审核',
+        '/teachers': '老师账号',
+        '/institution-review': '老师申请审核',
       } as Record<string, string>
     )[route.path] || '教学管理'
   )
 })
-const nav = [
-  { path: '/', icon: '⌂', label: '工作台' },
-  { path: '/courses', icon: '▤', label: '课程管理' },
-  { path: '/media', icon: '▣', label: '媒资中心' },
-  { path: '/review', icon: '✓', label: '审核工作台' },
-]
+const nav = computed(() =>
+  identity.value?.role === 'admin'
+    ? [
+        { path: '/review', icon: '✓', label: '课程审核' },
+        { path: '/institution-review', icon: '♙', label: '老师申请审核' },
+        { path: '/teachers', icon: '♙', label: '老师账号' },
+      ]
+    : [
+        { path: '/', icon: '⌂', label: '工作台' },
+        { path: '/courses', icon: '▤', label: '课程管理' },
+        { path: '/media', icon: '▣', label: '媒资中心' },
+      ],
+)
 </script>
 
 <template>
-  <div class="shell">
+  <RouterView v-if="route.path === '/login'" />
+  <div
+    v-else
+    class="shell"
+  >
     <aside class="sidebar">
       <RouterLink
         to="/"
@@ -68,10 +93,17 @@ const nav = [
         <div class="side-account">
           <span class="avatar">教</span>
           <div>
-            <strong>教学机构</strong>
-            <small>机构工作区</small>
+            <strong>{{ identity?.name || '老师' }}</strong>
+            <small>
+              {{ identity?.role === 'admin' ? '平台管理员' : '老师工作区' }}
+            </small>
           </div>
-          <span>⋯</span>
+          <button
+            type="button"
+            @click="signOut"
+          >
+            退出
+          </button>
         </div>
       </div>
     </aside>

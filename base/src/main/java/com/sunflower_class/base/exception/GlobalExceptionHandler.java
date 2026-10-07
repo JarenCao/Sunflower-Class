@@ -57,8 +57,9 @@ public class GlobalExceptionHandler {
     /**
      * 汇总请求参数校验失败的字段提示，转换为统一错误响应。
      */
+    @ResponseBody
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
     public RestErrorResponse methodArgumentNotValidException(MethodArgumentNotValidException e) {
         BindingResult bindingResult = e.getBindingResult();
         String errMessage = bindingResult

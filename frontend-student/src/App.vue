@@ -1,7 +1,28 @@
 <!-- 学员端应用框架：品牌导航、路由页面和公共页脚。 -->
-<script setup lang="ts"></script>
+<script setup lang="ts">
+import { useRoute } from 'vue-router'
+import { ref } from 'vue'
+import { errorMessage } from '../../frontend-shared/error-message'
+import { identity, logout } from './auth'
+const route = useRoute()
+const logoutError = ref('')
+/** 退出后重新加载公开首页，清空当前用户的页面状态。 */
+async function signOut() {
+  logoutError.value = ''
+  try {
+    await logout()
+    window.location.assign('/')
+  } catch (error) {
+    logoutError.value = errorMessage(error, '退出失败，请稍后重试')
+  }
+}
+</script>
 <template>
-  <div class="student-shell">
+  <RouterView v-if="route.path === '/login'" />
+  <div
+    v-else
+    class="student-shell"
+  >
     <div class="announcement">
       <span>✦</span>
       每一点热爱，都值得被认真对待
@@ -23,6 +44,7 @@
           <RouterLink to="/">首页</RouterLink>
           <RouterLink to="/courses">全部课程</RouterLink>
           <RouterLink to="/my-courses">我的学习</RouterLink>
+          <RouterLink to="/institution-apply">申请成为老师</RouterLink>
         </nav>
         <div class="header-right">
           <RouterLink
@@ -31,10 +53,31 @@
           >
             我的订单
           </RouterLink>
-          <span class="student-avatar">学</span>
+          <template v-if="identity">
+            <span>{{ identity.name }}</span>
+            <button
+              type="button"
+              @click="signOut"
+            >
+              退出
+            </button>
+          </template>
+          <RouterLink
+            v-else
+            to="/login"
+          >
+            登录
+          </RouterLink>
         </div>
       </div>
     </header>
+    <p
+      v-if="logoutError"
+      role="alert"
+      class="logout-error"
+    >
+      {{ logoutError }}
+    </p>
     <main><RouterView /></main>
     <footer class="site-footer">
       <div>
@@ -59,3 +102,10 @@
     </footer>
   </div>
 </template>
+
+<style scoped>
+.logout-error {
+  color: #b42318;
+  text-align: center;
+}
+</style>

@@ -1,0 +1,5 @@
+# namespace: dev，group: sunflower_class
+server:
+  port: 63090
+  servlet:
+    context-path: /orders

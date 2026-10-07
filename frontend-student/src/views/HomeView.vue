@@ -1,5 +1,6 @@
 <!-- 学员首页：读取已发布课程用于推荐展示，并提供课程浏览入口。 -->
 <script setup lang="ts">
+import { errorMessage } from '../../../frontend-shared/error-message'
 import { onMounted, ref } from 'vue'
 import CourseCard from '../components/CourseCard.vue'
 import { getCourses } from '../data'
@@ -11,7 +12,7 @@ onMounted(async () => {
   try {
     courses.value = await getCourses()
   } catch (e) {
-    error.value = (e as Error).message
+    error.value = errorMessage(e)
   }
 })
 </script>

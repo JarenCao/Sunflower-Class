@@ -1,6 +1,6 @@
-# 学员端
+# 学员门户
 
-Vue 3、TypeScript、Vite、Vue Router 和 Axios，默认端口 5174。
+Vue 3、TypeScript、Vite、Vue Router、Axios 和二维码组件，默认端口 5174。通过 Gateway 访问真实后端；`.env.local` 的 `VITE_GATEWAY_TARGET` 默认指向 `http://localhost:63010`。
 
 ```sh
 npm ci
@@ -8,8 +8,10 @@ npm run dev
 npm run build
 ```
 
-通过网关读取 `/content/published-courses` 与 `/content/published-courses/{id}` 的真实发布快照，支持课程列表、筛选、详情和目录。不使用浏览器本地存储或样例课程；接口失败会展示错误。`.env.local` 可设置 `VITE_GATEWAY_TARGET`，默认 `http://localhost:63010`。
+支持学员注册登录、已发布课程搜索和详情、目录、匿名试学、免费选课和续期、我的学习、订单及老师申请。老师申请通过后获得独立老师账号，学员账号和学习记录保持独立。普通播放由 Learning 核对学习资格，Media 返回短期签名地址。
 
-登录、选课、我的课程、支付和授权视频播放尚无后端接口，对应页面保留明确的未开放说明，不创建虚假订单或学习记录。不提供课程预览。详见 [联调说明](../docs/LIVE_INTEGRATION.md)。
+收费课程接入 Orders 与支付宝沙箱二维码、查单及支付事件协议。真实付款和公网回调仍按用户约定保留未验收状态；不能用生成二维码代替付款成功或开通学习资格。
 
-界面仅面向电脑端使用，不维护手机、平板专用布局；保留桌面窗口缩放所需的列数与间距调整。
+全部业务数据来自真实 API，不使用浏览器本地存储、样例课程或虚假支付结果。空库没有课程是正常状态，初始化与模块说明见 [项目梳理](../docs/PROJECT_GUIDE.md)。两个前端共用中文错误处理规则。
+
+界面面向电脑端，保留桌面窗口缩放所需的布局调整。

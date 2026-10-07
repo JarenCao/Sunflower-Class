@@ -5,16 +5,19 @@ spring:
     active: dev
   config:
     import:
-      - "nacos:learning-service-dev.yaml?group=sunflower_class"
-      - "nacos:learning-api-dev.yaml?group=sunflower_class"
-      - "nacos:logging-dev.yaml?group=common"
-      - "nacos:swagger-dev.yaml?group=common"
-      - "nacos:rabbitmq-dev.yaml?group=common"
+      - 'nacos:auth-dev.yaml?group=common'
+      - 'nacos:learning-service-dev.yaml?group=sunflower_class'
+      - 'nacos:learning-api-dev.yaml?group=sunflower_class'
+      - 'nacos:logging-dev.yaml?group=common'
+      - 'nacos:swagger-dev.yaml?group=common'
+      - 'nacos:rabbitmq-dev.yaml?group=common'
   cloud:
     nacos:
       config:
         enabled: true
         server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        username: ${NACOS_USERNAME:}
+        password: ${NACOS_PASSWORD:}
         namespace: ${NACOS_NAMESPACE:dev}
         group: sunflower_class
         file-extension: yaml
@@ -22,8 +25,16 @@ spring:
       discovery:
         enabled: true
         server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        username: ${NACOS_USERNAME:}
+        password: ${NACOS_PASSWORD:}
         namespace: ${NACOS_NAMESPACE:dev}
         group: sunflower_class
   rabbitmq:
     publisher-confirm-type: correlated
     publisher-returns: true
+
+# Map 查询保留空字段，PO 沿用数据库下划线与 Java 驼峰的映射规则。
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    call-setters-on-nulls: true

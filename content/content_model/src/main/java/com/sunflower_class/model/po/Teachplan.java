@@ -68,7 +68,7 @@ public class Teachplan implements Serializable {
     @TableField("course_pub_id")
     private Long coursePubId;
 
-    @Schema(description = "状态（1-正常，0-删除）", example = "1")
+    @Schema(description = "记录状态（10101=正常，10102=删除）", example = "10101")
     @TableField("status")
     private Integer status;
 

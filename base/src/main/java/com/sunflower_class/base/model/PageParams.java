@@ -19,8 +19,7 @@ public class PageParams {
     /**
      * 创建分页参数；无参构造保留字段默认值，有参构造使用指定页码和每页数量。
      */
-    public PageParams() {
-    }
+    public PageParams() {}
 
     /**
      * 创建分页参数；无参构造保留字段默认值，有参构造使用指定页码和每页数量。

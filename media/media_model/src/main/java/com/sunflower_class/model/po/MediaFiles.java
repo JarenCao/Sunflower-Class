@@ -18,6 +18,9 @@ import lombok.Data;
 @Schema(description = "媒资文件信息")
 public class MediaFiles implements Serializable {
 
+    /** 删除失败仅保留错误类型或取消进度，便于前端重试，不记录存储凭据。 */
+    private String deleteError;
+
     @Schema(description = "主键ID", example = "1234567890")
     @TableId(value = "id", type = IdType.ASSIGN_ID)
     private String id;
@@ -64,7 +67,9 @@ public class MediaFiles implements Serializable {
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime changeDate;
 
-    @Schema(description = "处理状态：20300隐藏、20301待处理、20302可用、20303失败、20304处理中")
+    @Schema(
+        description = "处理状态：20300隐藏、20301待处理、20302可用、20303失败、20304处理中、20305删除中"
+    )
     private String status;
 
     @Schema(description = "备注", example = "已转码完成")

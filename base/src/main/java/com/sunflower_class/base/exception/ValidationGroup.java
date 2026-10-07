@@ -8,18 +8,15 @@ public class ValidationGroup {
     /**
      * 新增操作的参数校验分组标记。
      */
-    public interface insert {
-    }
+    public interface insert {}
 
     /**
      * 修改操作的参数校验分组标记。
      */
-    public interface update {
-    }
+    public interface update {}
 
     /**
      * 删除操作的参数校验分组标记。
      */
-    public interface delete {
-    }
+    public interface delete {}
 }

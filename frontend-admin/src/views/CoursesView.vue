@@ -1,5 +1,6 @@
 <!-- 课程管理：分页查询课程，提供编辑、提审、发布、下架及二次确认删除。 -->
 <script setup lang="ts">
+import { errorMessage } from '../../../frontend-shared/error-message'
 import { PAGE_SIZE } from '../api'
 import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -40,7 +41,7 @@ async function refreshSync() {
     const messages = await listPublicationMessages(courseId)
     if (courseId === syncCourseId.value) syncMessages.value = messages
   } catch (error) {
-    ElMessage.error((error as Error).message)
+    ElMessage.error(errorMessage(error))
   } finally {
     if (courseId === syncCourseId.value) syncLoading.value = false
   }
@@ -53,7 +54,7 @@ async function retrySync(id: number) {
     ElMessage.success('已安排重试，请稍后刷新同步状态')
     await refreshSync()
   } catch (error) {
-    ElMessage.error((error as Error).message)
+    ElMessage.error(errorMessage(error))
   } finally {
     syncLoading.value = false
   }
@@ -78,7 +79,7 @@ async function refresh() {
     rows.value = result.items
     count.value = result.count
   } catch (error) {
-    ElMessage.error((error as Error).message)
+    ElMessage.error(errorMessage(error))
   } finally {
     loading.value = false
   }
@@ -90,7 +91,7 @@ async function audit(id: number) {
     ElMessage.success('已提交审核')
     await refresh()
   } catch (error) {
-    ElMessage.error((error as Error).message)
+    ElMessage.error(errorMessage(error))
   }
 }
 // 发布成功后刷新列表，从服务端获取最新发布状态。
@@ -100,7 +101,7 @@ async function publish(id: number) {
     ElMessage.success('课程已发布，搜索与学习目录正在同步')
     await refresh()
   } catch (error) {
-    ElMessage.error((error as Error).message)
+    ElMessage.error(errorMessage(error))
   }
 }
 // 二次确认下架，成功后重新读取服务端发布状态。
@@ -120,7 +121,7 @@ async function offline(id: number) {
     ElMessage.success('课程已下架')
     await refresh()
   } catch (error) {
-    ElMessage.error((error as Error).message)
+    ElMessage.error(errorMessage(error))
   } finally {
     actionId.value = null
   }
@@ -147,7 +148,7 @@ async function remove(id: number) {
     if (rows.value.length === 1 && page.value > 1) page.value -= 1
     await refresh()
   } catch (error) {
-    ElMessage.error((error as Error).message)
+    ElMessage.error(errorMessage(error))
   } finally {
     actionId.value = null
   }
@@ -207,7 +208,7 @@ const auditLabel = (s: string) =>
     >
       <el-table-column
         label="课程"
-        min-width="280"
+        width="360"
       >
         <template #default="{ row }">
           <div class="table-course">
@@ -295,7 +296,7 @@ const auditLabel = (s: string) =>
       </el-table-column>
       <el-table-column
         label="操作"
-        width="320"
+        min-width="360"
       >
         <template #default="{ row }">
           <!-- 按审核与发布状态展示操作入口，执行时仍由后端判断是否允许。 -->

@@ -1,99 +1,75 @@
 package com.sunflower_class.scheduler;
 
+import com.sunflower_class.base.config.FFmpegConfig;
+import com.sunflower_class.base.course.CourseMessageSender;
 import com.sunflower_class.mapper.MediaProcessMapper;
 import com.sunflower_class.model.dto.TranscodeMessageDto;
 import com.sunflower_class.model.po.MediaProcess;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
-/**
- * 扫描可重试的失败转码任务，更新任务状态并在事务提交后重新投递。
- */
+/** 定时任务统一处理待发送、到期失败与超时任务；消息重复由原子抢占排除。 */
 @Slf4j
 @Component
 public class VideoScheduler {
 
     @Autowired
-    private MediaProcessMapper mediaProcessMapper;
+    private MediaProcessMapper tasks;
 
     @Autowired
-    private RabbitTemplate rabbitTemplate;
+    private CourseMessageSender sender;
 
-    @org.springframework.beans.factory.annotation.Value("${media.transcode.max-attempts:3}")
+    @Autowired
+    private TransactionTemplate transactions;
+
+    @Value("${media.transcode.max-attempts:3}")
     private int maxAttempts;
 
-    @org.springframework.beans.factory.annotation.Value("${media.transcode.retry-batch-size:10}")
+    @Value("${media.transcode.retry-batch-size:10}")
     private int batchSize;
 
-    /**
-     * 定时查询未达重试上限的失败任务，改为待处理状态，并在事务提交后重新发送转码消息。
-     */
-    @Scheduled(cron = "${media.transcode.retry-cron:0 */5 * * * ?}")
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Autowired
+    private FFmpegConfig ffmpegConfig;
+
+    /** 每五秒检查到期任务，失败次数由实际转码失败累加，发送失败不冒充转码失败。 */
+    @Scheduled(fixedDelay = 5000, initialDelay = 5000)
     public void videoSchedulerTask() {
-        List<MediaProcess> failedTasks = mediaProcessMapper.selectShedulerTasks(
-            maxAttempts,
-            batchSize
+        transactions.executeWithoutResult(transaction -> {
+            // 超过转码超时再增加两分钟宽限，恢复进程退出留下的处理中记录。
+            tasks.markStalledFilesFailed(ffmpegConfig.getTimeoutMinutes() + 2);
+            tasks.markStalledProcessesFailed(ffmpegConfig.getTimeoutMinutes() + 2);
+        });
+        // 取消任务超出最大运行时长时清除运行标记，绝不把删除中的文件恢复成失败或待处理。
+        tasks.cancelDeletedProcesses(ffmpegConfig.getTimeoutMinutes() + 2);
+        List<Long> ids = tasks.selectDispatchableTasks(
+            Math.max(1, maxAttempts),
+            Math.max(1, batchSize)
         );
-        if (failedTasks == null || failedTasks.isEmpty()) {
-            log.debug("没有未达到重试上限的失败任务");
-            return;
-        }
-
-        log.info("查询到 {} 个未达到重试上限的失败任务", failedTasks.size());
-
-        int count = 0;
-
-        for (MediaProcess mediaProcess : failedTasks) {
-            int updated = mediaProcessMapper.updateStatusFailTask(
-                mediaProcess.getId(),
-                maxAttempts,
-                batchSize
-            );
-
-            if (updated > 0) {
-                // 等待数据库事务提交后再发消息，防止消费者读到旧的任务状态。
-                org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
-                    new org.springframework.transaction.support.TransactionSynchronization() {
-                        /**
-                         * 数据库事务提交成功后发送转码任务，避免消费者早于任务记录落库开始处理。
-                         */
-                        @Override
-                        public void afterCommit() {
-                            publishMessage(mediaProcess);
-                        }
-                    }
-                );
-
-                count++;
-
-                log.info(
-                    "任务已重新发送到MQ: fileId={}, 失败次数={}",
-                    mediaProcess.getFileId(),
-                    mediaProcess.getFailCount()
-                );
+        for (long id : ids) {
+            Boolean claimed = transactions.execute(transaction -> {
+                int updated = tasks.claimDispatch(id, Math.max(1, maxAttempts));
+                if (updated == 1) tasks.markDispatchedFileWaiting(id);
+                return updated == 1;
+            });
+            if (!Boolean.TRUE.equals(claimed)) continue;
+            MediaProcess task = tasks.selectById(id);
+            if (task == null) continue;
+            TranscodeMessageDto message = new TranscodeMessageDto();
+            message.setFileMd5(task.getFileId());
+            message.setFilename(task.getFilename());
+            message.setBucket(task.getBucket());
+            message.setFilePath(task.getFilePath());
+            try {
+                sender.send("video", message);
+            } catch (Exception error) {
+                tasks.markDispatchFailure(id);
+                log.warn("转码消息等待恢复：{}", id, error);
             }
         }
-        log.info("【定时任务】完成: 成功重新发送 {} 个任务", count);
-    }
-
-    /**
-     * 从转码记录提取文件位置，通过直连交换机的 video 路由键重新发送任务。
-     */
-    public void publishMessage(MediaProcess mediaProcess) {
-        TranscodeMessageDto msg = new TranscodeMessageDto();
-
-        msg.setFileMd5(mediaProcess.getFileId());
-        msg.setFilename(mediaProcess.getFilename());
-        msg.setBucket(mediaProcess.getBucket());
-        msg.setFilePath(mediaProcess.getFilePath());
-
-        rabbitTemplate.convertAndSend("direct.exchange", "video", msg);
     }
 }

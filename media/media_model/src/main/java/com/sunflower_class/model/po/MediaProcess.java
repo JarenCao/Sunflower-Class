@@ -36,7 +36,9 @@ public class MediaProcess implements Serializable {
     @Schema(description = "文件存储路径", example = "/videos/2024/01/course.mp4")
     private String filePath;
 
-    @Schema(description = "处理状态：20300隐藏、20301待处理、20302可用、20303失败、20304处理中")
+    @Schema(
+        description = "处理状态：20300隐藏、20301待处理、20302可用、20303失败、20304处理中、20305删除中"
+    )
     private String status;
 
     @Schema(description = "上传时间")
@@ -54,4 +56,11 @@ public class MediaProcess implements Serializable {
 
     @Schema(description = "处理失败次数", example = "0")
     private Integer failCount;
+
+    /** 下一次允许自动重试的时间，避免失败消息无限快速重新入队。 */
+    private LocalDateTime retryAt;
+    /** 原子抢占时间，用于异常退出后的超时恢复。 */
+    private LocalDateTime processingAt;
+    /** 最近投递时间，待处理消息丢失时允许租约到期重投。 */
+    private LocalDateTime dispatchAt;
 }

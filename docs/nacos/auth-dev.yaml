@@ -1,0 +1,6 @@
+# 所有服务导入 common 分组的认证配置。密钥通过运行环境提供，不提交真实值。
+sunflower:
+  auth:
+    secret: ${SUNFLOWER_AUTH_SECRET}
+    # 本机 HTTP 联调可设为 false；HTTPS 部署必须使用 true。
+    cookie-secure: ${COOKIE_SECURE:true}

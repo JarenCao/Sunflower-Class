@@ -1,6 +1,7 @@
 package com.sunflower_class.service.search.config;
 
-import com.sunflower_class.base.course.*;
+import com.sunflower_class.base.course.CourseEventConsumer;
+import com.sunflower_class.base.course.CourseMessageSender;
 import com.sunflower_class.service.search.service.CourseSearchService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

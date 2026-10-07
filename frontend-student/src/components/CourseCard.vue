@@ -35,7 +35,6 @@ watch(
         v-else
         class="cover-glow"
       ></div>
-      <span class="cover-symbol">{{ course.symbol }}</span>
       <span class="cover-category">{{ course.category }}</span>
     </div>
     <div class="course-info">

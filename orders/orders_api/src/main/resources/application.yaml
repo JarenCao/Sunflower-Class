@@ -1,0 +1,36 @@
+spring:
+  application:
+    name: orders-api
+  profiles:
+    active: dev
+  config:
+    import:
+      - 'nacos:auth-dev.yaml?group=common'
+      - 'optional:nacos:alipay-dev.yaml?group=common'
+      - 'nacos:rabbitmq-dev.yaml?group=common'
+      - 'nacos:orders-service-dev.yaml?group=sunflower_class'
+      - 'nacos:orders-api-dev.yaml?group=sunflower_class'
+  cloud:
+    nacos:
+      config:
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        username: ${NACOS_USERNAME:}
+        password: ${NACOS_PASSWORD:}
+        namespace: ${NACOS_NAMESPACE:dev}
+        group: sunflower_class
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        username: ${NACOS_USERNAME:}
+        password: ${NACOS_PASSWORD:}
+        namespace: ${NACOS_NAMESPACE:dev}
+        group: sunflower_class
+
+  rabbitmq:
+    publisher-confirm-type: correlated
+    publisher-returns: true
+
+# Map 查询保留空字段，PO 沿用数据库下划线与 Java 驼峰的映射规则。
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    call-setters-on-nulls: true

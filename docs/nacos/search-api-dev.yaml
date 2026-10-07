@@ -3,4 +3,3 @@ server:
   port: 63060
   servlet:
     context-path: /search
-

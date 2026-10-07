@@ -14,6 +14,7 @@ export interface Course {
   charge: string
   price: number
   originalPrice: number
+  validDays?: number
   auditStatus: string
   status: string
   companyId?: number
@@ -56,6 +57,7 @@ export interface Category {
 }
 /** 章或小节节点，兼容接口中的父节点字段命名并携带绑定媒资。 */
 export interface Teachplan {
+  isPreview?: string
   id: number
   pname: string
   parentId?: number
@@ -68,6 +70,7 @@ export interface Teachplan {
 }
 /** 媒资列表与上传结果模型，状态及文件类型使用后端业务编码。 */
 export interface MediaFile {
+  deleteError?: string
   id: string
   filename: string
   fileType?: string
@@ -75,3 +78,27 @@ export interface MediaFile {
   url?: string
   createDate?: string
 }
+
+/** 审核只读快照，JSON 目录来自提交时持久化的数据。 */
+export interface ReviewSnapshot {
+  teachers?: string
+  id: number
+  name: string
+  companyId: number
+  companyName?: string
+  description: string
+  charge: string
+  price: number
+  teachplan: string
+}
+
+/** 课程讲师介绍，与教师登录账号独立。 */
+export interface CourseTeacher {
+  id: number
+  courseId: number
+  teacherName: string
+  position: string
+  introduction: string
+  photograph: string
+}
+export type CourseTeacherInput = Omit<CourseTeacher, 'id' | 'courseId'>

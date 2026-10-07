@@ -1,4 +1,5 @@
 # namespace: dev，group: sunflower_class。将实际值保存在 Nacos 或环境变量中。
+# LEARNING_DB_URL 使用 jdbc:mysql://<实际地址>:3306/learning，包含 connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true。
 spring:
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver

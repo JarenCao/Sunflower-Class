@@ -61,5 +61,11 @@ HELP.md
 #
 node_modules/
 
-# Test sources and resources
-**/src/test/
+# Local output and private environment configuration
+logs/
+**/dist/
+**/.env
+**/.env.*
+!**/.env.example
+**/__pycache__/
+*.pyc

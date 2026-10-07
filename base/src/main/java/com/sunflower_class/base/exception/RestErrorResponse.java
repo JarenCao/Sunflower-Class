@@ -18,8 +18,7 @@ public class RestErrorResponse implements Serializable {
     /**
      * 无参构造方法（框架反序列化使用）
      */
-    public RestErrorResponse() {
-    }
+    public RestErrorResponse() {}
 
     /**
      * 有参构造方法

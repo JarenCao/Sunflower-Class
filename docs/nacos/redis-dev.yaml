@@ -1,0 +1,9 @@
+# namespace: dev，group: common；实际密码只放Nacos或环境变量。
+spring:
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD}
+      connect-timeout: 500ms
+      timeout: 500ms

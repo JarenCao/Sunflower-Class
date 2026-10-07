@@ -1,10 +1,8 @@
 package com.sunflower_class.model.dto;
 
-import java.math.BigDecimal;
-
 import com.sunflower_class.model.po.CourseBase;
-
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.math.BigDecimal;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 

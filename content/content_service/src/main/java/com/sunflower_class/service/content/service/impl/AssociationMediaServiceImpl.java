@@ -9,6 +9,8 @@ import static com.sunflower_class.base.model.BusinessCodes.PROCESS_READY;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.sunflower_class.base.exception.GlobalException;
+import com.sunflower_class.base.security.CurrentUser;
+import com.sunflower_class.base.utils.MediaObjectLock;
 import com.sunflower_class.model.dto.BindTeachplanMediaDto;
 import com.sunflower_class.model.po.CourseBase;
 import com.sunflower_class.model.po.Teachplan;
@@ -21,16 +23,17 @@ import com.sunflower_class.service.content.service.AssociationMediaService;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import javax.sql.DataSource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.client.ServiceInstance;
 import org.springframework.cloud.client.discovery.DiscoveryClient;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
 /**
  * 通过服务发现核对媒资归属与可用性，再用事务替换教学计划媒资关联。
@@ -54,8 +57,11 @@ public class AssociationMediaServiceImpl implements AssociationMediaService {
     @Autowired
     private DiscoveryClient discoveryClient;
 
-    @Value("${sunflower.company-id}")
-    private Long companyId;
+    @Autowired
+    private DataSource lockSource;
+
+    @Autowired
+    private TransactionTemplate bindingTransactions;
 
     /** 通过 Nacos 中的 media-api 实例读取文件元数据，服务不可用时拒绝绑定或发布。 */
     @Override
@@ -72,12 +78,16 @@ public class AssociationMediaServiceImpl implements AssociationMediaService {
                 .build()
                 .get()
                 .uri("/media/files/{id}/binding-info", mediaId)
+                // 服务间传递原始令牌，由媒资服务独立验签。
+                .header("Authorization", "Bearer " + CurrentUser.jwt().getTokenValue())
                 .retrieve()
                 .body(Map.class);
             if (
                 file == null ||
                 !mediaId.equals(file.get("id")) ||
-                !companyId.toString().equals(String.valueOf(file.get("companyId")))
+                !CurrentUser.companyId()
+                    .toString()
+                    .equals(String.valueOf(file.get("companyId")))
             ) {
                 GlobalException.cast("媒资不存在或不属于当前机构");
             }
@@ -88,7 +98,7 @@ public class AssociationMediaServiceImpl implements AssociationMediaService {
         } catch (HttpClientErrorException.NotFound error) {
             GlobalException.cast("媒资不存在或不属于当前机构");
             return Map.of();
-        } catch (org.springframework.web.client.RestClientException error) {
+        } catch (RestClientException error) {
             GlobalException.cast("无法核对媒资文件，请检查媒资服务");
             return Map.of();
         }
@@ -97,9 +107,23 @@ public class AssociationMediaServiceImpl implements AssociationMediaService {
     /**
      * 锁定所属课程，核对媒资文件存在、归属及处理状态后才替换旧绑定。
      */
-    @Transactional(rollbackFor = Exception.class)
     @Override
     public void associationMedia(BindTeachplanMediaDto bindTeachplanMediaDto) {
+        if (bindTeachplanMediaDto == null) GlobalException.cast("绑定信息不能为空");
+        try (
+            MediaObjectLock lock = new MediaObjectLock(
+                lockSource,
+                bindTeachplanMediaDto.getMediaId()
+            )
+        ) {
+            bindingTransactions.executeWithoutResult(transaction ->
+                bindWithinTransaction(bindTeachplanMediaDto)
+            );
+        }
+    }
+
+    /** 持有共享媒资锁后核对可用性并提交绑定，删除须等待本事务完成。 */
+    private void bindWithinTransaction(BindTeachplanMediaDto bindTeachplanMediaDto) {
         if (
             bindTeachplanMediaDto == null ||
             bindTeachplanMediaDto.getTeachplanId() == null ||
@@ -119,7 +143,7 @@ public class AssociationMediaServiceImpl implements AssociationMediaService {
                 .eq(CourseBase::getId, teachplan.getCourseId())
                 .last("FOR UPDATE")
         );
-        if (course == null || !companyId.equals(course.getCompanyId())) {
+        if (course == null || !CurrentUser.companyId().equals(course.getCompanyId())) {
             GlobalException.cast("不能绑定非本机构课程的媒资");
         }
         if (

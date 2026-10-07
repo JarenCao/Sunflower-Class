@@ -1,5 +1,6 @@
 <!-- 工作台：汇总课程、审核、发布与媒资数量，并展示最近课程。 -->
 <script setup lang="ts">
+import { errorMessage } from '../../../frontend-shared/error-message'
 import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
@@ -27,7 +28,7 @@ onMounted(async () => {
     published.value = online.count
     mediaCount.value = media.count
   } catch (error) {
-    ElMessage.error((error as Error).message)
+    ElMessage.error(errorMessage(error))
   }
 })
 // 将常见审核编码转换为工作台文案，未列出的编码显示待处理。

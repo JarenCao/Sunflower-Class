@@ -1,0 +1,53 @@
+# namespace: dev，group: sunflower_class
+server:
+  port: 63010
+
+spring:
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: auth-api
+              uri: lb://auth-api
+              predicates:
+                - Path=/auth/**
+
+            - id: content-api
+              uri: lb://content-api
+              predicates:
+                - Path=/content/**
+
+            - id: system-api
+              uri: lb://system-api
+              predicates:
+                - Path=/system/**
+
+            - id: media-api
+              uri: lb://media-api
+              predicates:
+                - Path=/media/**
+
+            - id: search-api
+              uri: lb://search-api
+              predicates:
+                - Path=/search/**
+
+            - id: learning-api
+              uri: lb://learning-api
+              predicates:
+                - Path=/learning/**
+
+            - id: orders-api
+              uri: lb://orders-api
+              predicates:
+                - Path=/orders/**
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: gateway,health
+  endpoint:
+    gateway:
+      enabled: true

@@ -1,6 +1,18 @@
 package com.sunflower_class.service.content.service.impl;
 
-import static com.sunflower_class.base.model.BusinessCodes.*;
+import static com.sunflower_class.base.model.BusinessCodes.AUDIT_APPROVED;
+import static com.sunflower_class.base.model.BusinessCodes.AUDIT_DRAFT;
+import static com.sunflower_class.base.model.BusinessCodes.AUDIT_PENDING;
+import static com.sunflower_class.base.model.BusinessCodes.CHARGE_FREE;
+import static com.sunflower_class.base.model.BusinessCodes.CHARGE_PAID;
+import static com.sunflower_class.base.model.BusinessCodes.COURSE_DRAFT;
+import static com.sunflower_class.base.model.BusinessCodes.COURSE_OFFLINE;
+import static com.sunflower_class.base.model.BusinessCodes.COURSE_PUBLISHED;
+import static com.sunflower_class.base.model.BusinessCodes.LEVEL_ADVANCED;
+import static com.sunflower_class.base.model.BusinessCodes.LEVEL_BEGINNER;
+import static com.sunflower_class.base.model.BusinessCodes.LEVEL_INTERMEDIATE;
+import static com.sunflower_class.base.model.BusinessCodes.TEACH_LIVE;
+import static com.sunflower_class.base.model.BusinessCodes.TEACH_RECORDED;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.StringUtils;
@@ -8,8 +20,11 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.sunflower_class.base.exception.GlobalException;
 import com.sunflower_class.base.model.PageParams;
 import com.sunflower_class.base.model.PageResult;
+import com.sunflower_class.base.security.CurrentUser;
+import com.sunflower_class.base.utils.MediaObjectLock;
 import com.sunflower_class.model.dto.AddCourseDto;
 import com.sunflower_class.model.dto.CourseBaseInfoDto;
+import com.sunflower_class.model.dto.CourseTeacherDto;
 import com.sunflower_class.model.dto.EditCourseDto;
 import com.sunflower_class.model.dto.QueryCourseParamsDto;
 import com.sunflower_class.model.po.CourseBase;
@@ -27,16 +42,30 @@ import com.sunflower_class.service.content.mapper.CoursePublishPreMapper;
 import com.sunflower_class.service.content.mapper.CourseTeacherMapper;
 import com.sunflower_class.service.content.mapper.TeachplanMapper;
 import com.sunflower_class.service.content.mapper.TeachplanMediaMapper;
+import com.sunflower_class.service.content.service.AssociationMediaService;
 import com.sunflower_class.service.content.service.CourseBaseInfoService;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import javax.sql.DataSource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.client.ServiceInstance;
+import org.springframework.cloud.client.discovery.DiscoveryClient;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * 课程基础与营销信息的业务实现，负责参数校验、机构条件、分页组合及保存。
@@ -46,8 +75,46 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 public class CourseBaseInfoServiceImpl implements CourseBaseInfoService {
 
-    @Value("${sunflower.company-id}")
-    private Long companyId;
+    @Autowired
+    private DataSource coverLockSource;
+
+    @Autowired
+    private TransactionTemplate coverTransactions;
+
+    @Autowired
+    private DiscoveryClient coverDiscovery;
+
+    @Autowired
+    private AssociationMediaService coverMedia;
+
+    /** 解析本地图片并持锁提交课程引用，避免并发删除后仍写入失效封面。 */
+    private <T> T saveWithCover(String pic, Supplier<T> save) {
+        if (pic == null || pic.isBlank()) return coverTransactions.execute(transaction ->
+            save.get()
+        );
+        List<ServiceInstance> instances = coverDiscovery.getInstances("media-api");
+        if (instances.isEmpty()) GlobalException.cast("媒资服务不可用，暂不能核对封面");
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(3000);
+        factory.setReadTimeout(3000);
+        Map info = RestClient.builder()
+            .baseUrl(instances.getFirst().getUri().toString())
+            .requestFactory(factory)
+            .build()
+            .get()
+            .uri(builder -> builder.path("/media/files/cover-info").queryParam("url", pic).build())
+            .header("Authorization", "Bearer " + CurrentUser.jwt().getTokenValue())
+            .retrieve()
+            .body(Map.class);
+        if (info != null && Boolean.TRUE.equals(info.get("managed"))) {
+            String id = String.valueOf(info.get("id"));
+            try (MediaObjectLock lock = new MediaObjectLock(coverLockSource, id)) {
+                coverMedia.requireReadyMedia(id);
+                return coverTransactions.execute(transaction -> save.get());
+            }
+        }
+        return coverTransactions.execute(transaction -> save.get());
+    }
 
     @Autowired
     private CourseBaseMapper courseBaseMapper;
@@ -178,13 +245,11 @@ public class CourseBaseInfoServiceImpl implements CourseBaseInfoService {
         }
 
         if (
-            !java.util.Set.of(LEVEL_BEGINNER, LEVEL_INTERMEDIATE, LEVEL_ADVANCED).contains(
-                dto.getGrade()
-            )
+            !Set.of(LEVEL_BEGINNER, LEVEL_INTERMEDIATE, LEVEL_ADVANCED).contains(dto.getGrade())
         ) GlobalException.cast("课程等级编码无效");
-        if (
-            !java.util.Set.of(TEACH_RECORDED, TEACH_LIVE).contains(dto.getTeachmode())
-        ) GlobalException.cast("教学模式编码无效");
+        if (!Set.of(TEACH_RECORDED, TEACH_LIVE).contains(dto.getTeachmode())) GlobalException.cast(
+            "教学模式编码无效"
+        );
         validateCharge(dto);
     }
 
@@ -193,28 +258,28 @@ public class CourseBaseInfoServiceImpl implements CourseBaseInfoService {
      */
     private void validateCharge(AddCourseDto dto) {
         String charge = dto.getCharge();
-        java.math.BigDecimal price = dto.getPrice();
+        BigDecimal price = dto.getPrice();
 
         if (StringUtils.isBlank(charge)) {
             GlobalException.cast("收费类型不能为空");
         }
 
-        if (!java.util.Set.of(CHARGE_FREE, CHARGE_PAID).contains(charge)) GlobalException.cast(
+        if (!Set.of(CHARGE_FREE, CHARGE_PAID).contains(charge)) GlobalException.cast(
             "收费类型编码无效"
         );
         if (CHARGE_PAID.equals(charge)) {
             if (price == null) {
                 GlobalException.cast("收费课程价格不能为空");
             }
-            if (price.compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            if (price.compareTo(BigDecimal.ZERO) <= 0) {
                 GlobalException.cast("收费课程价格必须大于0");
             }
         }
 
         if (CHARGE_FREE.equals(charge)) {
-            if (price != null && price.compareTo(java.math.BigDecimal.ZERO) > 0) {
+            if (price != null && price.compareTo(BigDecimal.ZERO) > 0) {
                 log.warn("免费课程价格应为0，当前价格：{}，将自动设置为0", price);
-                dto.setPrice(java.math.BigDecimal.ZERO);
+                dto.setPrice(BigDecimal.ZERO);
             }
         }
     }
@@ -241,7 +306,7 @@ public class CourseBaseInfoServiceImpl implements CourseBaseInfoService {
 
         // 构建查询条件
         LambdaQueryWrapper<CourseBase> lambdaQueryWrapper = new LambdaQueryWrapper<>();
-        lambdaQueryWrapper.eq(CourseBase::getCompanyId, companyId);
+        lambdaQueryWrapper.eq(CourseBase::getCompanyId, CurrentUser.companyId());
         lambdaQueryWrapper.orderByDesc(CourseBase::getCreateDate, CourseBase::getId);
         lambdaQueryWrapper.like(
             StringUtils.isNotBlank(courseParamsDto.getCourseName()),
@@ -268,8 +333,8 @@ public class CourseBaseInfoServiceImpl implements CourseBaseInfoService {
         // 返回结果
         List<CourseBase> records = selectPage.getRecords();
         // 按当前页课程 ID 批量补充收费信息，避免逐条查询；缺失记录保持为空。
-        java.util.Map<Long, CourseMarket> markets = records.isEmpty()
-            ? java.util.Map.of()
+        Map<Long, CourseMarket> markets = records.isEmpty()
+            ? Map.of()
             : courseMarketMapper
                   .selectList(
                       new LambdaQueryWrapper<CourseMarket>().in(
@@ -280,7 +345,7 @@ public class CourseBaseInfoServiceImpl implements CourseBaseInfoService {
                   .stream()
                   .collect(
                       // 课程编号作为键，完整营销记录作为值，供当前页课程快速关联。
-                      java.util.stream.Collectors.toMap(CourseMarket::getId, market -> market)
+                      Collectors.toMap(CourseMarket::getId, market -> market)
                   );
         List<CourseBaseInfoDto> items = records
             .stream()
@@ -332,6 +397,11 @@ public class CourseBaseInfoServiceImpl implements CourseBaseInfoService {
             }
         );
 
+        // 编辑详情只能读取当前身份所属机构的课程。
+        if (!CurrentUser.companyId().equals(courseBase.getCompanyId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "课程不属于当前机构");
+        }
+
         // 旧测试课程可能没有营销记录；提供可编辑的免费课程默认值，保存时再补齐记录。
         CourseMarket courseMarket = courseMarketMapper.selectById(id);
         if (courseMarket == null) {
@@ -339,8 +409,8 @@ public class CourseBaseInfoServiceImpl implements CourseBaseInfoService {
             courseMarket = new CourseMarket();
             courseMarket.setId(id);
             courseMarket.setCharge(CHARGE_FREE);
-            courseMarket.setPrice(java.math.BigDecimal.ZERO);
-            courseMarket.setOriginalPrice(java.math.BigDecimal.ZERO);
+            courseMarket.setPrice(BigDecimal.ZERO);
+            courseMarket.setOriginalPrice(BigDecimal.ZERO);
         }
 
         // 构建返回结果
@@ -357,8 +427,13 @@ public class CourseBaseInfoServiceImpl implements CourseBaseInfoService {
      * @return 完整的课程信息 DTO（包含基础信息 + 营销信息 + 分类名称）
      */
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public CourseBaseInfoDto createCourseBase(AddCourseDto addCourseDto) {
+        return saveWithCover(addCourseDto.getPic(), () -> createWithinTransaction(addCourseDto));
+    }
+
+    /** 封面锁内原子保存基础信息与营销信息。 */
+    private CourseBaseInfoDto createWithinTransaction(AddCourseDto addCourseDto) {
         // 参数校验
         validateCourseInfo(addCourseDto);
 
@@ -366,7 +441,7 @@ public class CourseBaseInfoServiceImpl implements CourseBaseInfoService {
         CourseBase courseBase = new CourseBase();
         BeanUtils.copyProperties(addCourseDto, courseBase);
         courseBase.setCreateDate(LocalDateTime.now());
-        courseBase.setCompanyId(companyId);
+        courseBase.setCompanyId(CurrentUser.companyId());
         courseBase.setChangeDate(LocalDateTime.now());
         courseBase.setAuditStatus(AUDIT_DRAFT); // 默认未提交
         courseBase.setStatus(COURSE_DRAFT); // 默认未发布
@@ -396,8 +471,15 @@ public class CourseBaseInfoServiceImpl implements CourseBaseInfoService {
      * @return 更新后的完整课程信息 DTO
      */
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public CourseBaseInfoDto updateCourseBaseInfo(Long companyId, EditCourseDto editCourseDto) {
+        return saveWithCover(editCourseDto.getPic(), () ->
+            updateWithinTransaction(companyId, editCourseDto)
+        );
+    }
+
+    /** 封面锁内更新并撤销失效审核结论，原事务规则保持不变。 */
+    private CourseBaseInfoDto updateWithinTransaction(Long companyId, EditCourseDto editCourseDto) {
         // 参数校验
         if (editCourseDto == null || editCourseDto.getId() == null) {
             log.error("更新课程信息失败：参数为空或ID为空");
@@ -526,5 +608,144 @@ public class CourseBaseInfoServiceImpl implements CourseBaseInfoService {
             GlobalException.cast("课程删除失败");
         }
         log.info("课程及关联记录删除完成，课程ID：{}，机构ID：{}", courseId, companyId);
+    }
+
+    /** 师资读写复用课程行锁，避免和提审、发布交错保存。 */
+    private CourseBase requireTeacherCourse(Long courseId, boolean editing) {
+        if (courseId == null || courseId <= 0) throw new ResponseStatusException(
+            HttpStatus.BAD_REQUEST,
+            "课程编号无效"
+        );
+        LambdaQueryWrapper<CourseBase> query = new LambdaQueryWrapper<CourseBase>().eq(
+            CourseBase::getId,
+            courseId
+        );
+        if (editing) query.last("FOR UPDATE");
+        CourseBase course = courseBaseMapper.selectOne(query);
+        if (
+            course == null || !CurrentUser.companyId().equals(course.getCompanyId())
+        ) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "课程不存在或不属于当前机构");
+        if (
+            editing &&
+            ((!COURSE_DRAFT.equals(course.getStatus()) &&
+                !COURSE_OFFLINE.equals(course.getStatus())) ||
+                AUDIT_PENDING.equals(course.getAuditStatus()))
+        ) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "已发布或审核中的课程不能修改师资，请先下架或等待审核完成"
+            );
+        }
+        return course;
+    }
+
+    @Override
+    public List<CourseTeacher> listCourseTeachers(Long courseId) {
+        requireTeacherCourse(courseId, false);
+        return courseTeacherMapper.selectList(
+            new LambdaQueryWrapper<CourseTeacher>()
+                .eq(CourseTeacher::getCourseId, courseId)
+                .orderByAsc(CourseTeacher::getId)
+        );
+    }
+
+    @Override
+    // 与现有createCourseBase/updateCourseBaseInfo一致：saveWithCover内部TransactionTemplate保存全部写入，提交后才释放照片锁。
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public CourseTeacher saveCourseTeacher(Long courseId, Long teacherId, CourseTeacherDto input) {
+        String photograph = input.getPhotograph() == null ? "" : input.getPhotograph().trim();
+        // 图片只允许站内媒资或HTTP(S)地址；站内图片沿用封面的核对与删除互斥锁。
+        if (
+            !photograph.isEmpty() &&
+            !photograph.startsWith("/api/media/files/") &&
+            !photograph.matches("https?://[^\s]+")
+        ) throw new ResponseStatusException(
+            HttpStatus.BAD_REQUEST,
+            "照片地址须为HTTP(S)地址或站内媒资地址"
+        );
+        return saveWithCover(photograph, () -> {
+            CourseBase course = requireTeacherCourse(courseId, true);
+            CourseTeacher teacher =
+                teacherId == null ? new CourseTeacher() : courseTeacherMapper.selectById(teacherId);
+            if (
+                teacher == null || (teacherId != null && !courseId.equals(teacher.getCourseId()))
+            ) throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "讲师记录不存在或不属于本课程"
+            );
+            String name = input.getTeacherName().trim();
+            LambdaQueryWrapper<CourseTeacher> duplicate = new LambdaQueryWrapper<CourseTeacher>()
+                .eq(CourseTeacher::getCourseId, courseId)
+                .eq(CourseTeacher::getTeacherName, name);
+            if (teacherId != null) duplicate.ne(CourseTeacher::getId, teacherId);
+            if (courseTeacherMapper.selectCount(duplicate) > 0) throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "本课程已有同名讲师"
+            );
+            teacher.setCourseId(courseId);
+            teacher.setTeacherName(name);
+            teacher.setPosition(input.getPosition() == null ? "" : input.getPosition().trim());
+            teacher.setIntroduction(input.getIntroduction().trim());
+            teacher.setPhotograph(photograph);
+            if (teacherId == null) {
+                teacher.setCreateDate(LocalDateTime.now());
+                if (courseTeacherMapper.insert(teacher) != 1) throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "讲师保存失败"
+                );
+            } else if (
+                courseTeacherMapper.updateById(teacher) != 1
+            ) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "讲师保存失败");
+            invalidateTeacherApproval(course);
+            return teacher;
+        });
+    }
+
+    /** 师资也是审核内容，修改后重新提交；正式快照仅由发布流程替换。 */
+    private void invalidateTeacherApproval(CourseBase course) {
+        if (AUDIT_APPROVED.equals(course.getAuditStatus())) {
+            course.setAuditStatus(AUDIT_DRAFT);
+            coursePublishPreMapper.deleteById(course.getId());
+        }
+        course.setChangeDate(LocalDateTime.now());
+        if (courseBaseMapper.updateById(course) != 1) throw new ResponseStatusException(
+            HttpStatus.BAD_REQUEST,
+            "课程状态更新失败"
+        );
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteCourseTeacher(Long courseId, Long teacherId) {
+        CourseBase course = requireTeacherCourse(courseId, true);
+        CourseTeacher teacher = courseTeacherMapper.selectById(teacherId);
+        if (
+            teacher == null || !courseId.equals(teacher.getCourseId())
+        ) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "讲师记录不存在或不属于本课程");
+        if (courseTeacherMapper.deleteById(teacherId) != 1) throw new ResponseStatusException(
+            HttpStatus.BAD_REQUEST,
+            "讲师删除失败"
+        );
+        invalidateTeacherApproval(course);
+    }
+
+    /** 全局引用检查只返回数量；查询失败向上抛出，不能当成没有引用。 */
+    @Override
+    @Transactional(readOnly = true)
+    public Map<String, Long> mediaReferences(String id, String url) {
+        long bindings = courseBaseMapper.countMediaBindings(id);
+        long covers = courseBaseMapper.countMediaCovers("%" + id + "%", url);
+        long published = courseBaseMapper.countPublishedMediaReferences(id, "%" + id + "%", url);
+        long audit = courseBaseMapper.countAuditMediaReferences(id, "%" + id + "%", url);
+        return Map.of(
+            "bindings",
+            bindings,
+            "covers",
+            covers,
+            "published",
+            published,
+            "audit",
+            audit
+        );
     }
 }

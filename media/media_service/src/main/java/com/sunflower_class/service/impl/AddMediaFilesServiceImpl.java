@@ -1,7 +1,11 @@
 package com.sunflower_class.service.impl;
 
-import static com.sunflower_class.base.model.BusinessCodes.*;
+import static com.sunflower_class.base.model.BusinessCodes.FILE_VIDEO;
+import static com.sunflower_class.base.model.BusinessCodes.MEDIA_AUDIT_APPROVED;
+import static com.sunflower_class.base.model.BusinessCodes.PROCESS_READY;
+import static com.sunflower_class.base.model.BusinessCodes.PROCESS_WAITING;
 
+import com.sunflower_class.base.course.CourseMessageSender;
 import com.sunflower_class.mapper.MediaFilesMapper;
 import com.sunflower_class.mapper.MediaProcessMapper;
 import com.sunflower_class.model.dto.TranscodeMessageDto;
@@ -12,7 +16,6 @@ import com.sunflower_class.service.AddMediaFilesService;
 import java.time.LocalDateTime;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -36,7 +39,7 @@ public class AddMediaFilesServiceImpl implements AddMediaFilesService {
     private MediaProcessMapper mediaProcessMapper;
 
     @Autowired
-    private RabbitTemplate rabbitTemplate;
+    private CourseMessageSender sender;
 
     /**
      * 保存媒资元数据与存储位置；视频登记待转码任务，普通素材标记为可用。
@@ -180,7 +183,7 @@ public class AddMediaFilesServiceImpl implements AddMediaFilesService {
                         message.setBucket(mediaFiles.getBucket());
                         message.setFilePath(mediaFiles.getFilePath());
 
-                        rabbitTemplate.convertAndSend("video.queue", message);
+                        sender.send("video", message);
                         log.info("转码消息已发送: fileMd5={}", mediaFiles.getId());
                     } catch (Exception e) {
                         log.error("发送转码消息失败: fileId={}", mediaFiles.getId(), e);
